@@ -3,3 +3,4 @@ python-telegram-bot
 pandas
 hupper
 python-dotenv
+psycopg2-binary
