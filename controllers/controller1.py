@@ -74,12 +74,12 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not nome or not quantidade or not unidade or not data_produto:
         await update.message.reply_text(
-    "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm]\nExemplo: /saida 3kg, cebola, 25/07")
+            "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm]\nExemplo: /saida 3kg, cebola, 25/07")
         return
 
     produtos = obtener_productos(nome)
     estoque = 0
-    for _, n, q, t, _ in produtos:
+    for _, n, q, t, _, u in produtos:
         if n.lower() == nome.lower():
             if t == 'entrada':
                 estoque += q
@@ -96,6 +96,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📤 Saída registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
+
 
 
 
