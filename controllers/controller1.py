@@ -166,7 +166,7 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nome, info in estoque_atual.items():
         if info["quantidade"] > 0:
             ultima_data = max(info["datas"]).strftime("%d/%m/%y")
-            mensagem += f"• {nome}: {info['quantidade']} kg (última: {ultima_data})\n"
+            mensagem += f"• {nome}: {info['quantidade']} kg {ultima_data}\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
