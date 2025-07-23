@@ -25,37 +25,30 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(v_menu(), parse_mode="Markdown", reply_markup=menu_markup)
 
 # Parsear a entrada do usuário
-def parse_args(update: Update, requiere_fecha=False):
+def parse_args(update, requiere_fecha=False):
     try:
-        partes = update.message.text.split(' ', 1)[1].split(',')
+        texto = update.message.text.split(' ', 1)[1]
+        partes = [p.strip() for p in texto.split(',')]
+
         if requiere_fecha:
-            if len(partes) < 4:
+            if len(partes) < 3:
                 return None, None, None, None, None
 
-            # Parsear cantidad y unidad (ej. "10kg")
-            match = re.match(r"(\d+)([a-zA-Z]+)", partes[0].strip())
+            # Buscar cantidad y unidad con o sin espacio (ej. "10kg" o "10 kg")
+            match = re.match(r"(\d+)\s*([a-zA-Z]+)", partes[0])
             if not match:
                 return None, None, None, None, None
 
             cantidad = int(match.group(1))
             unidad = match.group(2).lower()
-
-            unidades_validas = ['kg', 'l', 'unid']
-            if unidad not in unidades_validas:
-                # Mensaje específico al usuario
-                update.message.reply_text(
-                    f"❌ Unidade inválida: '{unidad}'. Use apenas: kg, l ou unid."
-                )
-                return None, None, None, None, None
-
             nombre = partes[1].strip().lower()
-            fecha_producto = datetime.strptime(partes[3].strip() + "/2025", "%d/%m/%Y").date()
+            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
 
             return nombre, cantidad, unidad, fecha_producto, 'entrada'
         else:
-            return None, None, None
-
-    except Exception:
+            return None, None, None  # para otros comandos aún no usados
+    except Exception as e:
+        print(f"❌ Error en parse_args: {e}")
         return (None,) * (5 if requiere_fecha else 3)
 
 
