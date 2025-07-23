@@ -125,7 +125,7 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     revisados = set()
 
-    for _, nombre, cantidad, tipo, fecha_producto in productos:
+    for _, nombre, cantidad, tipo, fecha_producto, _ in productos:
         if tipo != 'entrada':
             continue
 
