@@ -141,49 +141,35 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Comando: descarte
-async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade = parse_args(update)
-    if not nome or not quantidade:
-        await update.message.reply_text("❌ Use o formato: /descarte [produto], [quantidade]")
-        return
-    insertar_producto(nome, quantidade, "descarte", datetime.now().date())
-    await update.message.reply_text(f"🗑️ Descarte registrado: {quantidade} de {nome}")
-    
-    
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    productos = obtener_productos()
-    if not productos:
+    produtos = obter_productos()
+    if not produtos:
         await update.message.reply_text("📦 Nenhum item registrado no estoque.")
         return
 
     estoque_atual = {}
 
-    for _, nome, quantidade, tipo, fecha in productos:
+    for _, nome, quantidade, tipo, data in produtos:
         nome = nome.lower()
         tipo = tipo.lower()
         if nome not in estoque_atual:
-            estoque_atual[nome] = {"quantidade": 0, "ultima_data": fecha}
-        
+            estoque_atual[nome] = {"quantidade": 0, "datas": []}
+
         if tipo == 'entrada':
             estoque_atual[nome]["quantidade"] += quantidade
+            estoque_atual[nome]["datas"].append(data)
         elif tipo in ['saida', 'descarte', 'devolucao']:
             estoque_atual[nome]["quantidade"] -= quantidade
-        
-        # Actualiza si la fecha es más reciente
-        if fecha > estoque_atual[nome]["ultima_data"]:
-            estoque_atual[nome]["ultima_data"] = fecha
+            estoque_atual[nome]["datas"].append(data)
 
-    # Ordenar por fecha descendente
-    estoque_ordenado = sorted(
-        [(nome, data["quantidade"], data["ultima_data"]) for nome, data in estoque_atual.items() if data["quantidade"] > 0],
-        key=lambda x: x[2], reverse=True
-    )
-
-    mensagem = "📦 *Estoque Atual (ordenado por data):*\n"
-    for nome, quantidade, data in estoque_ordenado:
-        mensagem += f"• {nome}: {quantidade} kg (última: {data})\n"
+    mensagem = "📦 *Estoque Atual:*\n"
+    for nome, info in estoque_atual.items():
+        if info["quantidade"] > 0:
+            ultima_data = max(info["datas"]).strftime("%d/%m/%y")
+            mensagem += f"• {nome}: {info['quantidade']} kg (última: {ultima_data})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 
 
