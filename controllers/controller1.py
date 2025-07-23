@@ -28,24 +28,36 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def parse_args(update: Update, requiere_fecha=False):
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
-        
         if requiere_fecha:
-            
-            if len(partes) < 3:
+            if len(partes) < 4:
                 return None, None, None, None, None
+
+            # Parsear cantidad y unidad (ej. "10kg")
             match = re.match(r"(\d+)([a-zA-Z]+)", partes[0].strip())
-            
             if not match:
                 return None, None, None, None, None
+
             cantidad = int(match.group(1))
             unidad = match.group(2).lower()
+
+            unidades_validas = ['kg', 'l', 'unid']
+            if unidad not in unidades_validas:
+                # Mensaje específico al usuario
+                update.message.reply_text(
+                    f"❌ Unidade inválida: '{unidad}'. Use apenas: kg, l ou unid."
+                )
+                return None, None, None, None, None
+
             nombre = partes[1].strip().lower()
-            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
+            fecha_producto = datetime.strptime(partes[3].strip() + "/2025", "%d/%m/%Y").date()
+
             return nombre, cantidad, unidad, fecha_producto, 'entrada'
         else:
             return None, None, None
+
     except Exception:
         return (None,) * (5 if requiere_fecha else 3)
+
 
 
 # Comando: entrada
@@ -156,11 +168,15 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     estoque_atual = {}
 
-    for _, nome, quantidade, tipo, data in produtos:
+    for _, nome, quantidade, tipo, data, unidade in produtos:
         nome = nome.lower()
         tipo = tipo.lower()
         if nome not in estoque_atual:
-            estoque_atual[nome] = {"quantidade": 0, "datas": []}
+            estoque_atual[nome] = {
+                "quantidade": 0,
+                "datas": [],
+                "unidade": unidade
+            }
 
         if tipo == 'entrada':
             estoque_atual[nome]["quantidade"] += quantidade
@@ -173,9 +189,11 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nome, info in estoque_atual.items():
         if info["quantidade"] > 0:
             ultima_data = max(info["datas"]).strftime("%d/%m/%y")
-            mensagem += f"• {nome}: {info['quantidade']} kg {ultima_data}\n"
+            unidade = info["unidade"]
+            mensagem += f"• {nome}: {info['quantidade']} {unidade} ({ultima_data})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 
 
@@ -188,15 +206,16 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     resumo = {}
-    for _, nome, quantidade, tipo, fecha in produtos:
-        chave = (nome.lower(), tipo.lower(), fecha)
+    for _, nome, quantidade, tipo, data, unidade in produtos:
+        chave = (nome.lower(), tipo.lower(), data, unidade)
         resumo[chave] = resumo.get(chave, 0) + quantidade
 
     mensagem = "📊 *Resumo por tipo e data:*\n"
-    for (nome, tipo, fecha), total in resumo.items():
-        mensagem += f"• {nome} ({tipo}) – {total} kg em {fecha}\n"
+    for (nome, tipo, data, unidade), total in resumo.items():
+        mensagem += f"• {nome} ({tipo}) – {total} {unidade} em {data.strftime('%d/%m/%y')}\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 
 # Comando: debug → mostra os últimos registros sem filtro
