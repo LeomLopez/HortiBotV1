@@ -142,7 +142,7 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Comando: descarte
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    produtos = obter_productos()
+    produtos = obtener_productos()
     if not produtos:
         await update.message.reply_text("📦 Nenhum item registrado no estoque.")
         return
