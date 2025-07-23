@@ -32,23 +32,21 @@ def crear_tablas_productos():
     
     
     
-def insertar_producto(nombre, cantidad, tipo, fecha_producto):
+def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidad="kg"):
     conn = get_db_connection()
     cursor = conn.cursor()
     nombre = nombre.lower()
     tipo = tipo.lower()
-
+    unidad = unidad.lower()
     cursor.execute("""
-        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (nombre, tipo, fecha_producto)
-        DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
-    """, (nombre, cantidad, tipo, fecha_producto))
-
+        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade)
+        VALUES (%s, %s, %s, %s, %s);
+    """, (nombre, cantidad, tipo, fecha_producto, unidad))
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Produto '{nombre}' atualizado/inserido com sucesso.")   
+    print(f"✅ Produto '{nombre}' inserido com sucesso.")
+
     
     
 def obtener_productos(nombre=None):

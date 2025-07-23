@@ -28,20 +28,21 @@ def parse_args(update: Update, requiere_fecha=False):
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
         if requiere_fecha:
-            if len(partes) < 3:
-                return None, None, None, None
-            cantidad = int(partes[0].strip())
-            nome = partes[1].strip()
-            data_produto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
-            return nome, cantidad, data_produto, 'entrada'
+            if len(partes) < 4:
+                return None, None, None, None, None
+            # Parsear cantidad y unidad (ej. "10kg")
+            match = re.match(r"(\d+)([a-zA-Z]+)", partes[0].strip())
+            if not match:
+                return None, None, None, None, None
+            cantidad = int(match.group(1))
+            unidad = match.group(2)
+            nombre = partes[1].strip().lower()
+            fecha_producto = datetime.strptime(partes[3].strip() + "/2025", "%d/%m/%Y").date()
+            return nombre, cantidad, unidad, fecha_producto, 'entrada'
         else:
-            if len(partes) < 2:
-                return None, None
-            nome = partes[0].strip()
-            cantidad = int(partes[1].strip())
-            return nome, cantidad
+            return None, None, None  # para los otros comandos
     except Exception:
-        return (None,) * (4 if requiere_fecha else 2)
+        return (None,) * (5 if requiere_fecha else 3)
 
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
