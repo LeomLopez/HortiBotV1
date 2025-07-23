@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto
 from datetime import datetime
+import re
 
 # Teclado personalizado
 keyboard = [
@@ -30,6 +31,7 @@ def parse_args(update: Update, requiere_fecha=False):
         if requiere_fecha:
             if len(partes) < 4:
                 return None, None, None, None, None
+            
             # Parsear cantidad y unidad (ej. "10kg")
             match = re.match(r"(\d+)([a-zA-Z]+)", partes[0].strip())
             if not match:
