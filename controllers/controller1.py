@@ -28,42 +28,46 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def parse_args(update: Update, requiere_fecha=False):
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
+        
         if requiere_fecha:
-            if len(partes) < 4:
-                return None, None, None, None, None
             
-            # Parsear cantidad y unidad (ej. "10kg")
+            if len(partes) < 3:
+                return None, None, None, None, None
             match = re.match(r"(\d+)([a-zA-Z]+)", partes[0].strip())
+            
             if not match:
                 return None, None, None, None, None
             cantidad = int(match.group(1))
-            unidad = match.group(2)
+            unidad = match.group(2).lower()
             nombre = partes[1].strip().lower()
-            fecha_producto = datetime.strptime(partes[3].strip() + "/2025", "%d/%m/%Y").date()
+            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
             return nombre, cantidad, unidad, fecha_producto, 'entrada'
         else:
-            return None, None, None  # para los otros comandos
+            return None, None, None
     except Exception:
         return (None,) * (5 if requiere_fecha else 3)
 
+
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
+    nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
     if not nome or not quantidade or not data_produto:
         await update.message.reply_text("❌ Use o formato: /entrada [quantidade], [produto], [dd/mm]")
         return
-    insertar_producto(nome, quantidade, 'entrada', data_produto)
-    await update.message.reply_text(f"📥 Entrada registrada: {quantidade}kg de {nome} (data: {data_produto.strftime('%d/%m')})")
+    insertar_producto(nome, quantidade, tipo, data_produto)  # suponiendo que unidad se maneja por separado
+    await update.message.reply_text(
+        f"📥 Entrada registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
+    )
+
 
 # Comando: saída
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
-    
+    nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
+
     if not nome or not quantidade or not data_produto:
         await update.message.reply_text("❌ Use o formato: /saida [quantidade], [produto], [dd/mm]")
         return
 
-    # Calcular o estoque atual desse produto
     produtos = obtener_productos(nome)
     estoque = 0
     for _, n, q, t, _ in produtos:
@@ -75,15 +79,15 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if estoque < quantidade:
         await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nome} disponível: {estoque} kg. Você tentou retirar {quantidade} kg."
+            f"❌ Estoque insuficiente. {nome} disponível: {estoque} {unidade}. Tentativa de saída: {quantidade} {unidade}."
         )
         return
 
-    # Se há estoque suficiente, registrar a saída
-    insertar_producto(nome, quantidade, "saida", data_produto)
+    insertar_producto(nome, quantidade, 'saida', data_produto)
     await update.message.reply_text(
-        f"📤 Saída registrada: {quantidade}kg de {nome} (data: {data_produto.strftime('%d/%m')})"
+        f"📤 Saída registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
+
 
 
 
