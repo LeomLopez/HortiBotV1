@@ -64,7 +64,8 @@ def parse_args(update: Update, requiere_fecha=False):
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
     if not nome or not quantidade or not unidade or not data_produto:
-        await update.message.reply_text("❌ Use o formato: /entrada [quantidade][unidade], [produto][unidade], [dd/mm]")
+        await update.message.reply_text(
+    "❌ Use o formato: /entrada [quantidade+unidade], [produto], [dd/mm]\nExemplo: /entrada 10kg, manga, 26/07")
         return
 
     insertar_producto(nome, quantidade, tipo, data_produto, unidade)
@@ -79,7 +80,8 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
 
     if not nome or not quantidade or not unidade or not data_produto:
-        await update.message.reply_text("❌ Use o formato: /saida [quantidade][unidade], [produto], [dd/mm]")
+        await update.message.reply_text(
+    "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm]\nExemplo: /saida 3kg, cebola, 25/07")
         return
 
     produtos = obtener_productos(nome)
