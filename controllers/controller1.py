@@ -158,20 +158,33 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     estoque_atual = {}
 
-    for _, nome, quantidade, tipo, _ in productos:
+    for _, nome, quantidade, tipo, fecha in productos:
         nome = nome.lower()
         tipo = tipo.lower()
+        if nome not in estoque_atual:
+            estoque_atual[nome] = {"quantidade": 0, "ultima_data": fecha}
+        
         if tipo == 'entrada':
-            estoque_atual[nome] = estoque_atual.get(nome, 0) + quantidade
+            estoque_atual[nome]["quantidade"] += quantidade
         elif tipo in ['saida', 'descarte', 'devolucao']:
-            estoque_atual[nome] = estoque_atual.get(nome, 0) - quantidade
+            estoque_atual[nome]["quantidade"] -= quantidade
+        
+        # Actualiza si la fecha es más reciente
+        if fecha > estoque_atual[nome]["ultima_data"]:
+            estoque_atual[nome]["ultima_data"] = fecha
 
-    mensagem = "📦 *Estoque Atual:*\n"
-    for nome, total in estoque_atual.items():
-        if total > 0:
-            mensagem += f"• {nome}: {total} kg\n"
+    # Ordenar por fecha descendente
+    estoque_ordenado = sorted(
+        [(nome, data["quantidade"], data["ultima_data"]) for nome, data in estoque_atual.items() if data["quantidade"] > 0],
+        key=lambda x: x[2], reverse=True
+    )
+
+    mensagem = "📦 *Estoque Atual (ordenado por data):*\n"
+    for nome, quantidade, data in estoque_ordenado:
+        mensagem += f"• {nome}: {quantidade} kg (última: {data})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 
 # Comando: resumo por produto e tipo
@@ -182,15 +195,16 @@ async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     resumo = {}
-    for _, nome, quantidade, tipo, _ in produtos:
-        chave = (nome, tipo)
+    for _, nome, quantidade, tipo, fecha in produtos:
+        chave = (nome.lower(), tipo.lower(), fecha)
         resumo[chave] = resumo.get(chave, 0) + quantidade
 
-    mensagem = "📊 Resumo por tipo de movimentação:\n"
-    for (nome, tipo), total in resumo.items():
-        mensagem += f"• {nome} ({tipo}): {total} kg\n"
+    mensagem = "📊 *Resumo por tipo e data:*\n"
+    for (nome, tipo, fecha), total in resumo.items():
+        mensagem += f"• {nome} ({tipo}) – {total} kg em {fecha}\n"
 
-    await update.message.reply_text(mensagem)
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 # Comando: debug → mostra os últimos registros sem filtro
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
