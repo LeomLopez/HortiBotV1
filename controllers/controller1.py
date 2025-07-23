@@ -63,20 +63,22 @@ def parse_args(update: Update, requiere_fecha=False):
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
-    if not nome or not quantidade or not data_produto:
+    if not nome or not quantidade or not unidade or not data_produto:
         await update.message.reply_text("❌ Use o formato: /entrada [quantidade], [produto], [dd/mm]")
         return
-    insertar_producto(nome, quantidade, tipo, data_produto)  # suponiendo que unidad se maneja por separado
+
+    insertar_producto(nome, quantidade, tipo, data_produto, unidade)
     await update.message.reply_text(
         f"📥 Entrada registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
+
 
 
 # Comando: saída
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
 
-    if not nome or not quantidade or not data_produto:
+    if not nome or not quantidade or not unidade or not data_produto:
         await update.message.reply_text("❌ Use o formato: /saida [quantidade], [produto], [dd/mm]")
         return
 
@@ -95,10 +97,11 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    insertar_producto(nome, quantidade, 'saida', data_produto)
+    insertar_producto(nome, quantidade, 'saida', data_produto, unidade)
     await update.message.reply_text(
         f"📤 Saída registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
+
 
 
 
