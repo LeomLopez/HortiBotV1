@@ -12,8 +12,8 @@ BOT_COMMANDS = [
     BotCommand("devolucao", "Registrar uma devolução"),
     BotCommand("descarte", "Registrar um descarte"),
     BotCommand("vencimentos", "Ver produtos vencidos"),
-    BotCommand("estoque", "Ver últimos movimentos"),
-    BotCommand("resumo", "Ver resumo geral"),
+    BotCommand("estoque", "Ver resumo geral"),
+    BotCommand("resumo", "Ver últimos movimentos"),
 ]
 
 async def set_commands(application):
