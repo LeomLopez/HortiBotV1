@@ -165,11 +165,17 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📦 Nenhum item registrado no estoque.")
         return
 
+    hoje = datetime.now().date()
+
     # Diccionario: { (nome, fecha) : {"quantidade": X, "unidade": Y} }
     estoque_atual = {}
 
     for _, nome, quantidade, tipo, data, unidade in produtos:
-        chave = (nome.lower(), data)  # Separa por nombre y fecha
+        # Ignorar vencidos
+        if data < hoje:
+            continue
+
+        chave = (nome.lower(), data)
         if chave not in estoque_atual:
             estoque_atual[chave] = {"quantidade": 0, "unidade": unidade}
 
@@ -178,13 +184,16 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif tipo in ['saida', 'descarte', 'devolucao']:
             estoque_atual[chave]["quantidade"] -= quantidade
 
-    # Filtrar solo lotes con cantidad positiva
+    # Filtrar positivos y ordenar por fecha
     estoque_filtrado = [(nome, data, info["quantidade"], info["unidade"])
                         for (nome, data), info in estoque_atual.items()
                         if info["quantidade"] > 0]
 
-    # Ordenar por fecha de vencimiento (más cercana primero)
     estoque_ordenado = sorted(estoque_filtrado, key=lambda x: x[1])
+
+    if not estoque_ordenado:
+        await update.message.reply_text("📦 Nenhum item válido no estoque.")
+        return
 
     # Construir mensaje
     mensagem = "📦 *Estoque Atual:*\n"
