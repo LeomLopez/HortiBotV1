@@ -115,47 +115,48 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     
 async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    productos = obtener_productos()
-    hoy = datetime.now().date()
-    mensaje_alertas = "📅 *Avisos de Vencimento:*\n"
-    mensaje_descartes = f"\n🗑️ *Descartes automáticos de {hoy.strftime('%d/%m/%Y')}:*\n"
-    hay_alertas = False
-    hay_descartes = False
+    produtos = obtener_productos()
+    hoje = datetime.now().date()
 
-    revisados = set()
+    alerta_proximos = []
+    alerta_hoy = []
 
-    for _, nombre, cantidad, tipo, fecha_producto, _ in productos:
-        if tipo != 'entrada':
+    for _, nome, quantidade, tipo, data, unidade in produtos:
+        # Solo entradas cuentan para vencimiento
+        if tipo != "entrada":
             continue
 
-        if (nombre, fecha_producto) in revisados:
-            continue
-        revisados.add((nombre, fecha_producto))
+        # Diferencia en días entre hoy y fecha del producto
+        dias_restantes = (data - hoje).days
 
-        dias_diferencia = (fecha_producto - hoy).days
+        # Próximos a vencer (2 días)
+        if 1 <= dias_restantes <= 2:
+            alerta_proximos.append((nome, quantidade, unidade, data))
+        # Vencen hoy
+        elif dias_restantes == 0:
+            alerta_hoy.append((nome, quantidade, unidade, data))
 
-        if dias_diferencia == 2:
-            mensaje_alertas += f"⚠️ {nombre} vence em 2 dias ({fecha_producto.strftime('%d/%m')})\n"
-            hay_alertas = True
-        elif dias_diferencia == 0:
-            mensaje_alertas += f"⚠️ {nombre} vence HOJE! ({fecha_producto.strftime('%d/%m')})\n"
-            hay_alertas = True
-        elif dias_diferencia == -1:
-            # Insertar como descarte automático
-            insertar_producto(nombre, cantidad, 'descarte', hoy)
-            mensaje_descartes += f"🗑️ {nombre} vencido em {fecha_producto.strftime('%d/%m')} – descartado.\n"
-            hay_descartes = True
+    # Construir mensaje
+    if not alerta_proximos and not alerta_hoy:
+        await update.message.reply_text("✅ Nenhum item próximo de vencer ou vencendo hoje.")
+        return
 
-    final = ""
-    if hay_alertas:
-        final += mensaje_alertas
-    if hay_descartes:
-        final += mensaje_descartes
+    mensagem = "📅 *Alertas de Vencimento*\n"
 
-    if final:
-        await update.message.reply_text(final, parse_mode="Markdown")
-    else:
-        await update.message.reply_text("✅ Nenhum vencimento próximo ou vencido hoje.")    
+    # Productos que vencen hoy
+    if alerta_hoy:
+        mensagem += "\n⚠️ *Vencem HOJE:*\n"
+        for nome, quantidade, unidade, data in sorted(alerta_hoy, key=lambda x: x[3]):
+            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+
+    # Productos próximos a vencer
+    if alerta_proximos:
+        mensagem += "\n⏳ *Próximos a vencer (2 dias):*\n"
+        for nome, quantidade, unidade, data in sorted(alerta_proximos, key=lambda x: x[3]):
+            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+ 
 
 
 # Comando: descarte
