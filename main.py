@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config.config import BOT_TOKEN
-from controllers.controller1 import start, menu, entrada, saida, resumo, estoque,devolucao, vencimentos
+from controllers.controller1 import start, menu, entrada, saida, resumo, estoque,devolucao, vencimentos, movimentos
 from models.db import crear_tablas_productos, insertar_producto, obtener_productos
 
 
@@ -13,7 +13,7 @@ BOT_COMMANDS = [
     BotCommand("descarte", "Registrar um descarte"),
     BotCommand("vencimentos", "Ver produtos vencidos"),
     BotCommand("estoque", "Ver resumo geral"),
-    BotCommand("resumo", "Ver últimos movimentos"),
+    BotCommand("Movimientos", "Ver últimos movimentos"),
 ]
 
 async def set_commands(application):
@@ -33,6 +33,7 @@ application.add_handler(CommandHandler("vencimentos", vencimentos))
 """application.add_handler(CommandHandler("descarte", descarte))"""
 application.add_handler(CommandHandler("estoque", estoque))
 application.add_handler(CommandHandler("resumo", resumo))
+application.add_handler(CommandHandler("Moviemntos", movimentos))
 
 # Llama a set_commands luego de iniciar
 application.post_init = set_commands
