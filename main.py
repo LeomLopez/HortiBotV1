@@ -33,7 +33,7 @@ application.add_handler(CommandHandler("vencimentos", vencimentos))
 """application.add_handler(CommandHandler("descarte", descarte))"""
 application.add_handler(CommandHandler("estoque", estoque))
 application.add_handler(CommandHandler("resumo", resumo))
-application.add_handler(CommandHandler("Moviemntos", movimentacoes))
+application.add_handler(CommandHandler("movimentacoes", movimentacoes))
 
 # Llama a set_commands luego de iniciar
 application.post_init = set_commands
