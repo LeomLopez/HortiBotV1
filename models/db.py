@@ -43,7 +43,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade):
     cursor.execute("""
         INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (nombre, tipo, fecha_producto)
+        ON CONFLICT (nombre, tipo, fecha_producto, unidade)
         DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
     """, (nombre, cantidad, tipo, fecha_producto, unidade))
 
@@ -51,6 +51,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade):
     cursor.close()
     conn.close()
     print(f"✅ Produto '{nombre}' atualizado/inserido com sucesso.")
+
 
 
 
