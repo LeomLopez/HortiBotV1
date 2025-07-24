@@ -156,7 +156,7 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
- 
+
 
 
 # Comando: descarte
@@ -255,7 +255,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # 1. Obtener fecha del comando o usar hoy
+        # 1. Determinar la fecha solicitada
         if context.args:
             try:
                 fecha_str = context.args[0]
@@ -269,7 +269,7 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 2. Obtener todos los movimientos
         productos = obtener_productos()
 
-        # 3. Filtrar por fecha del movimiento (p[4] = fecha_producto)
+        # 3. Filtrar movimientos por la fecha de movimiento (fecha_producto)
         movimientos_dia = [p for p in productos if p[4] == fecha]
 
         # 4. Si no hay movimientos, avisar
@@ -279,8 +279,8 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 5. Construir mensaje
         mensaje = f"📅 *Movimentos de {fecha.strftime('%d/%m')}*\n"
-        for _, nome, quantidade, tipo, fecha_producto, unidade in movimientos_dia:
-            mensaje += f"• {nome} – {quantidade}{unidade} ({tipo}) – {fecha_producto.strftime('%d/%m')}\n"
+        for _, nome, quantidade, tipo, data, unidade in movimientos_dia:
+            mensaje += f"• {nome} – {quantidade}{unidade} ({tipo}) – {data.strftime('%d/%m')}\n"
 
         # 6. Enviar mensaje
         await update.message.reply_text(mensaje, parse_mode="Markdown")
