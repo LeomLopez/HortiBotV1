@@ -231,9 +231,8 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensagem)
 
 
-from datetime import datetime
 
-async def movimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Si el usuario pasa fecha, usarla; si no, usar hoy
     try:
         if context.args:
@@ -242,7 +241,7 @@ async def movimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             fecha_consulta = datetime.now().date()
     except ValueError:
-        await update.message.reply_text("❌ Formato inválido. Use: /movimentos dd/mm/aa")
+        await update.message.reply_text("❌ Formato inválido. Use: /movimentacoes dd/mm/aa")
         return
 
     # Obtener movimientos filtrados por fecha
@@ -250,11 +249,11 @@ async def movimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     movimientos_dia = [p for p in productos if p[4] == fecha_consulta]
 
     if not movimientos_dia:
-        await update.message.reply_text(f"📋 Sem movimentos para {fecha_consulta.strftime('%d/%m/%y')}.")
+        await update.message.reply_text(f"📋 Sem movimentacoes para {fecha_consulta.strftime('%d/%m/%y')}.")
         return
 
     # Armar mensaje
-    mensaje = f"📋 *Movimentos em {fecha_consulta.strftime('%d/%m/%y')}:*\n"
+    mensaje = f"📋 *Movimentacoes em {fecha_consulta.strftime('%d/%m/%y')}:*\n"
     for _, nombre, cantidad, tipo, fecha, unidade in movimientos_dia:
         mensaje += f"• {nombre} ({tipo}): {cantidad}{unidade}\n"
 
