@@ -178,6 +178,22 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif tipo in ['saida', 'descarte', 'devolucao']:
             estoque_atual[chave]["quantidade"] -= quantidade
 
+    # Filtrar solo lotes con cantidad positiva
+    estoque_filtrado = [(nome, data, info["quantidade"], info["unidade"])
+                        for (nome, data), info in estoque_atual.items()
+                        if info["quantidade"] > 0]
+
+    # Ordenar por fecha de vencimiento (más cercana primero)
+    estoque_ordenado = sorted(estoque_filtrado, key=lambda x: x[1])
+
+    # Construir mensaje
+    mensagem = "📦 *Estoque Atual:*\n"
+    for nome, data, quantidade, unidade in estoque_ordenado:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+
     # Construir mensaje
     mensagem = "📦 *Estoque Atual:*\n"
     for (nome, data), info in estoque_atual.items():
@@ -227,7 +243,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-async def movimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # 1. Obtener fecha del comando o usar hoy
         if context.args:
