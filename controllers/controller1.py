@@ -165,33 +165,27 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📦 Nenhum item registrado no estoque.")
         return
 
+    # Diccionario: { (nome, fecha) : {"quantidade": X, "unidade": Y} }
     estoque_atual = {}
 
     for _, nome, quantidade, tipo, data, unidade in produtos:
-        nome = nome.lower()
-        tipo = tipo.lower()
-        if nome not in estoque_atual:
-            estoque_atual[nome] = {
-                "quantidade": 0,
-                "datas": [],
-                "unidade": unidade
-            }
+        chave = (nome.lower(), data)  # Separa por nombre y fecha
+        if chave not in estoque_atual:
+            estoque_atual[chave] = {"quantidade": 0, "unidade": unidade}
 
         if tipo == 'entrada':
-            estoque_atual[nome]["quantidade"] += quantidade
-            estoque_atual[nome]["datas"].append(data)
+            estoque_atual[chave]["quantidade"] += quantidade
         elif tipo in ['saida', 'descarte', 'devolucao']:
-            estoque_atual[nome]["quantidade"] -= quantidade
-            estoque_atual[nome]["datas"].append(data)
+            estoque_atual[chave]["quantidade"] -= quantidade
 
+    # Construir mensaje
     mensagem = "📦 *Estoque Atual:*\n"
-    for nome, info in estoque_atual.items():
-        if info["quantidade"] > 0:
-            ultima_data = max(info["datas"]).strftime("%d/%m/%y")
-            unidade = info["unidade"]
-            mensagem += f"• {nome}: {info['quantidade']} {unidade} ({ultima_data})\n"
+    for (nome, data), info in estoque_atual.items():
+        if info["quantidade"] > 0:  # No mostrar si queda en cero
+            mensagem += f"• {nome}: {info['quantidade']}{info['unidade']} ({data.strftime('%d/%m')})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 
 
