@@ -232,29 +232,39 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Si el usuario pasa fecha, usarla; si no, usar hoy
+
+async def movimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        # 1. Obtener fecha del comando o usar hoy
         if context.args:
-            fecha_str = context.args[0]
-            fecha_consulta = datetime.strptime(fecha_str, "%d/%m/%y").date()
+            try:
+                fecha_str = context.args[0]
+                fecha = datetime.strptime(fecha_str + "/2025", "%d/%m/%Y").date()
+            except ValueError:
+                await update.message.reply_text("❌ Formato inválido. Use: /movimentos [dd/mm]")
+                return
         else:
-            fecha_consulta = datetime.now().date()
-    except ValueError:
-        await update.message.reply_text("❌ Formato inválido. Use: /movimentacoes dd/mm/aa")
-        return
+            fecha = datetime.now().date()
 
-    # Obtener movimientos filtrados por fecha
-    productos = obtener_productos()
-    movimientos_dia = [p for p in productos if p[4] == fecha_consulta]
+        # 2. Obtener todos los movimientos
+        productos = obtener_productos()
 
-    if not movimientos_dia:
-        await update.message.reply_text(f"📋 Sem movimentacoes para {fecha_consulta.strftime('%d/%m/%y')}.")
-        return
+        # 3. Filtrar por fecha del movimiento (p[4] = fecha_producto)
+        movimientos_dia = [p for p in productos if p[4] == fecha]
 
-    # Armar mensaje
-    mensaje = f"📋 *Movimentacoes em {fecha_consulta.strftime('%d/%m/%y')}:*\n"
-    for _, nombre, cantidad, tipo, fecha, unidade in movimientos_dia:
-        mensaje += f"• {nombre} ({tipo}): {cantidad}{unidade}\n"
+        # 4. Si no hay movimientos, avisar
+        if not movimientos_dia:
+            await update.message.reply_text(f"📅 Nenhum movimento registrado em {fecha.strftime('%d/%m')}.")
+            return
 
-    await update.message.reply_text(mensaje, parse_mode="Markdown")
+        # 5. Construir mensaje
+        mensaje = f"📅 *Movimentos de {fecha.strftime('%d/%m')}*\n"
+        for _, nome, quantidade, tipo, fecha_producto, unidade in movimientos_dia:
+            mensaje += f"• {nome} – {quantidade}{unidade} ({tipo}) – {fecha_producto.strftime('%d/%m')}\n"
+
+        # 6. Enviar mensaje
+        await update.message.reply_text(mensaje, parse_mode="Markdown")
+
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Erro ao buscar movimentos: {str(e)}")
+
