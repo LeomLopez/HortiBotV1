@@ -5,6 +5,14 @@ from models.db import obtener_productos, insertar_producto
 from datetime import datetime
 import re
 
+# Diccionario para traducir abreviaturas a nombre largo + emoji
+GRUPOS_MAP = {
+    "HOR": "🥕 Hortaliças",
+    "FRU": "🍎 Frutas",
+    "LAC": "🧀 Lácteos",
+    "CON": "❄️ Congelados",
+    "SEC": "📦 Secos"
+}
 
 # Teclado personalizado
 keyboard = [
@@ -58,16 +66,21 @@ def parse_args(update, requiere_fecha=False):
 
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
-    if not nome or not quantidade or not unidade or not data_produto:
+    nome, quantidade, unidade, data_produto, tipo, grupo = parse_args(update, requiere_fecha=True)
+
+    if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
-    "❌ Use o formato: /entrada [quantidade+unidade], [produto], [dd/mm]\nExemplo: /entrada 10kg, manga, 26/07")
+            "❌ Use o formato: /entrada [quantidade+unidade], [produto], [dd/mm], [grupo]\n"
+            "Exemplo: /entrada 10kg, tomate, 26/07, HOR"
+        )
         return
 
-    insertar_producto(nome, quantidade, tipo, data_produto, unidade)
+    insertar_producto(nome, quantidade, tipo, data_produto, unidade, grupo)
     await update.message.reply_text(
-        f"📥 Entrada registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
+        f"📥 Entrada registrada: {quantidade}{unidade} de {nome} "
+        f"({data_produto.strftime('%d/%m')}) – Grupo: {grupo}"
     )
+
 
 
 # Comando: saída
@@ -157,10 +170,6 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-# Comando: descarte
-from datetime import datetime
-from models.db import obtener_productos
-
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     produtos = obtener_productos()
     if not produtos:
@@ -169,48 +178,61 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     hoje = datetime.now().date()
 
-    # Diccionario para agrupar por producto + fecha
-    estoque_atual = {}
+    # Diccionario agrupado: { grupo: { (nome, fecha): {quantidade, unidade} } }
+    grupos_estoque = {}
 
-    for _, nome, quantidade, tipo, data, unidade in produtos:
-        # Ignorar productos que ya vencieron (fecha < hoy)
+    for _, nome, quantidade, tipo, data, unidade, grupo in produtos:
+        # Ignorar productos vencidos
         if data < hoje:
             continue
 
         chave = (nome.lower(), data)
-        if chave not in estoque_atual:
-            estoque_atual[chave] = {"quantidade": 0, "unidade": unidade}
+
+        # Asegurar que el grupo exista
+        if grupo not in grupos_estoque:
+            grupos_estoque[grupo] = {}
+
+        # Asegurar que el producto-fecha exista dentro del grupo
+        if chave not in grupos_estoque[grupo]:
+            grupos_estoque[grupo][chave] = {"quantidade": 0, "unidade": unidade}
 
         # Sumar/restar según tipo
         if tipo == 'entrada':
-            estoque_atual[chave]["quantidade"] += quantidade
+            grupos_estoque[grupo][chave]["quantidade"] += quantidade
         elif tipo in ['saida', 'descarte', 'devolucao']:
-            estoque_atual[chave]["quantidade"] -= quantidade
+            grupos_estoque[grupo][chave]["quantidade"] -= quantidade
 
-    # Filtrar solo positivos y ordenar por fecha (ascendente)
-    estoque_ordenado = sorted(
-        [(nome, data, info["quantidade"], info["unidade"])
-         for (nome, data), info in estoque_atual.items()
-         if info["quantidade"] > 0],
-        key=lambda x: x[1]
-    )
+    # Construir mensaje final
+    mensagem = "📦 *Estoque Atual:*\n"
 
-    # Si no hay stock válido
-    if not estoque_ordenado:
+    for cod_grupo, itens in grupos_estoque.items():
+        # Traducir código a nombre largo
+        nome_grupo = GRUPOS_MAP.get(cod_grupo, cod_grupo)
+
+        # Filtrar solo cantidades positivas
+        itens_validos = [(nome, data, info["quantidade"], info["unidade"])
+                         for (nome, data), info in itens.items()
+                         if info["quantidade"] > 0]
+
+        if not itens_validos:
+            continue
+
+        # Ordenar por fecha
+        itens_ordenados = sorted(itens_validos, key=lambda x: x[1])
+
+        # Sección del grupo
+        mensagem += f"\n{nome_grupo}\n"
+
+        # Listar productos
+        for nome, data, quantidade, unidade in itens_ordenados:
+            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+
+    # Si no hay nada válido
+    if mensagem == "📦 *Estoque Atual:*\n":
         await update.message.reply_text("📦 Nenhum item válido no estoque.")
         return
 
-    # Construir mensaje
-    mensagem = "📦 *Estoque Atual:*\n"
-    for nome, data, quantidade, unidade in estoque_ordenado:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
-
     await update.message.reply_text(mensagem, parse_mode="Markdown")
-
-
-
-
-
 
 
 # Comando: resumo por produto e tipo
