@@ -5,6 +5,7 @@ from models.db import obtener_productos, insertar_producto
 from datetime import datetime
 import re
 
+
 # Teclado personalizado
 keyboard = [
     ["🥕 HortiFruti", "❄️ Congelados"],
@@ -13,6 +14,7 @@ keyboard = [
 ]
 menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+
 # Mensagem de boas-vindas
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -20,9 +22,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menu_markup
     )
 
+
 # Mostrar menu
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(v_menu(), parse_mode="Markdown", reply_markup=menu_markup)
+
 
 # Parsear a entrada do usuário
 def parse_args(update, requiere_fecha=False):
@@ -52,7 +56,6 @@ def parse_args(update, requiere_fecha=False):
         return (None,) * (5 if requiere_fecha else 3)
 
 
-
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
@@ -65,7 +68,6 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📥 Entrada registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
-
 
 
 # Comando: saída
@@ -96,10 +98,6 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📤 Saída registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
     )
-
-
-
-
 
 
 # Comando: devolução
@@ -160,6 +158,9 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Comando: descarte
+from datetime import datetime
+from models.db import obtener_productos
+
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     produtos = obtener_productos()
     if not produtos:
@@ -168,11 +169,11 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     hoje = datetime.now().date()
 
-    # Diccionario: { (nome, fecha) : {"quantidade": X, "unidade": Y} }
+    # Diccionario para agrupar por producto + fecha
     estoque_atual = {}
 
     for _, nome, quantidade, tipo, data, unidade in produtos:
-        # Ignorar vencidos
+        # Ignorar productos que ya vencieron (fecha < hoy)
         if data < hoje:
             continue
 
@@ -180,18 +181,21 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chave not in estoque_atual:
             estoque_atual[chave] = {"quantidade": 0, "unidade": unidade}
 
+        # Sumar/restar según tipo
         if tipo == 'entrada':
             estoque_atual[chave]["quantidade"] += quantidade
         elif tipo in ['saida', 'descarte', 'devolucao']:
             estoque_atual[chave]["quantidade"] -= quantidade
 
-    # Filtrar positivos y ordenar por fecha
-    estoque_filtrado = [(nome, data, info["quantidade"], info["unidade"])
-                        for (nome, data), info in estoque_atual.items()
-                        if info["quantidade"] > 0]
+    # Filtrar solo positivos y ordenar por fecha (ascendente)
+    estoque_ordenado = sorted(
+        [(nome, data, info["quantidade"], info["unidade"])
+         for (nome, data), info in estoque_atual.items()
+         if info["quantidade"] > 0],
+        key=lambda x: x[1]
+    )
 
-    estoque_ordenado = sorted(estoque_filtrado, key=lambda x: x[1])
-
+    # Si no hay stock válido
     if not estoque_ordenado:
         await update.message.reply_text("📦 Nenhum item válido no estoque.")
         return
@@ -203,14 +207,6 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
-
-    # Construir mensaje
-    mensagem = "📦 *Estoque Atual:*\n"
-    for (nome, data), info in estoque_atual.items():
-        if info["quantidade"] > 0:  # No mostrar si queda en cero
-            mensagem += f"• {nome}: {info['quantidade']}{info['unidade']} ({data.strftime('%d/%m')})\n"
-
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
 
 
 
