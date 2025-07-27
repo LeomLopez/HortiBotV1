@@ -36,19 +36,25 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo):
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Normalizar datos a minúsculas
     nombre = nombre.lower()
     tipo = tipo.lower()
     unidade = unidade.lower()
-    grupo = grupo.upper()
+    grupo = grupo.lower()
 
+    # Insertar o actualizar usando el nuevo índice único que incluye grupo
     cursor.execute("""
         INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo)
         VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo)
+        DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
     """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo))
 
     conn.commit()
     cursor.close()
     conn.close()
+    print(f"✅ Produto '{nombre}' ({grupo}) atualizado/inserido com sucesso.")
+
 
 
 
