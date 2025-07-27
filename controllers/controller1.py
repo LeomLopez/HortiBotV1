@@ -21,7 +21,6 @@ keyboard = [
 ]
 menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-
 # ------------------------
 # Funciones Auxiliares
 # ------------------------
@@ -29,8 +28,7 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 def parse_args(update: Update, requiere_fecha=False):
     """
     Parsea el mensaje del usuario.
-    Formato esperado: /entrada 20 kg, tomate, 29/07, HOR
-    Retorna: (nombre, cantidad, unidad, fecha_producto, grupo)
+    Formato: /entrada 20 kg, tomate, 29/07, HOR
     """
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
@@ -39,7 +37,6 @@ def parse_args(update: Update, requiere_fecha=False):
             if len(partes) < 4:
                 return None, None, None, None, None
 
-            # Cantidad y unidad
             cant_unid = partes[0].strip().split()
             if len(cant_unid) != 2:
                 return None, None, None, None, None
@@ -47,13 +44,8 @@ def parse_args(update: Update, requiere_fecha=False):
             cantidad = int(cant_unid[0])
             unidad = cant_unid[1].lower()
 
-            # Nombre del producto
             nombre = partes[1].strip().lower()
-
-            # Fecha del producto
             fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
-
-            # Grupo en mayúsculas
             grupo = partes[3].strip().upper()
 
             return nombre, cantidad, unidad, fecha_producto, grupo
@@ -65,7 +57,7 @@ def parse_args(update: Update, requiere_fecha=False):
 
 
 def calcular_estoque(nome, grupo, produtos):
-    """Calcula el stock actual de un producto dentro de un grupo"""
+    """Calcula stock actual de un producto en un grupo"""
     estoque = 0
     for _, n, q, t, d, u, g, _ in produtos:
         if n.lower() == nome.lower() and g == grupo:
@@ -84,7 +76,6 @@ def mover_para_descarte(produtos):
     for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
         if tipo == "entrada" and (data - hoje).days == -1:
             insertar_producto(nome, quantidade, 'descarte', data, unidade, grupo)
-
 
 # ------------------------
 # Comandos del Bot
@@ -112,7 +103,6 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Insertar en base
     insertar_producto(nome, quantidade, 'entrada', data_produto, unidade, grupo)
 
     await update.message.reply_text(
@@ -150,13 +140,12 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# Comando: vencimentos
+# Comando: vencimientos
 async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     produtos = obtener_productos()
     hoje = datetime.now().date()
 
-    # Descartar automáticamente productos vencidos
-    mover_para_descarte(produtos)
+    mover_para_descarte(produtos)  # Descarta autom.
 
     alerta_proximos = []
     alerta_hoy = []
@@ -241,55 +230,6 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
