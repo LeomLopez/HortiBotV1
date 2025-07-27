@@ -207,7 +207,7 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Diccionario agrupado: { grupo: { (nome, fecha): {quantidade, unidade} } }
     grupos_estoque = {}
 
-    for _, nome, quantidade, tipo, data, unidade, grupo in produtos:
+    for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
         # Ignorar productos vencidos
         if data < hoje:
             continue
