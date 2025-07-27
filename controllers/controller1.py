@@ -118,7 +118,8 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     produtos = obtener_productos(nome)
     estoque = 0
-    for _, n, q, t, _, u, g in produtos:
+    for _, n, q, t, d, u, g in produtos:
+    
         if n.lower() == nome.lower() and g == grupo:
             if t == 'entrada':
                 estoque += q
