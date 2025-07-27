@@ -40,52 +40,58 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def parse_args(update: Update, requiere_fecha=False):
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
-        partes = [p.strip() for p in partes]  # Limpiar espacios extra
 
         if requiere_fecha:
-            # Deben llegar 4 partes: cantidad+unidad, nombre, grupo, fecha
             if len(partes) < 4:
                 return None, None, None, None, None, None
 
-            # Parsear cantidad y unidad (ej. "10kg")
-            match = re.match(r"(\d+)([a-zA-Z]+)", partes[0])
-            if not match:
+            # Cantidad + unidad (ejemplo "20 kg")
+            cant_unid = partes[0].strip().split()
+            if len(cant_unid) != 2:
                 return None, None, None, None, None, None
-            cantidad = int(match.group(1))
-            unidad = match.group(2).lower()
 
-            nombre = partes[1].lower()
-            grupo = partes[2].lower()
+            cantidad = int(cant_unid[0])
+            unidad = cant_unid[1].lower()
 
-            fecha_producto = datetime.strptime(partes[3] + "/2025", "%d/%m/%Y").date()
+            # Nombre del producto
+            nombre = partes[1].strip().lower()
 
-            return nombre, cantidad, unidad, fecha_producto, 'entrada', grupo
+            # Fecha del producto
+            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
+
+            # Grupo
+            grupo = partes[3].strip().lower()
+
+            # Tipo se definirá en los comandos (entrada/saida)
+            return nombre, cantidad, unidad, fecha_producto, None, grupo
+
         else:
-            # Si no requiere fecha, retorna valores básicos
             return None, None, None, None, None, None
+
     except Exception:
         return (None,) * 6
 
 
 
+
 # Comando: entrada
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, tipo, grupo = parse_args(update, requiere_fecha=True)
+    nome, quantidade, unidade, data_produto, _, grupo = parse_args(update, requiere_fecha=True)
 
-    # Validar campos
     if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
-            "❌ Use o formato: /entrada [quantidade+unidade], [produto], [dd/mm], [grupo]\n"
-            "Exemplo: /entrada 10kg, tomate, 26/07, HOR"
+            "❌ Use o formato: /entrada [quantidade] [unidade], [produto], [dd/mm], [grupo]\n"
+            "Exemplo: /entrada 20 kg, tomate, 29/07, hor"
         )
         return
 
-    # Validar grupo
-    if grupo not in GRUPOS_MAP:
-        await update.message.reply_text(
-            f"❌ Grupo '{grupo}' não é válido. Use um destes: {', '.join(GRUPOS_MAP.keys())}"
-        )
-        return
+    insertar_producto(nome, quantidade, 'entrada', data_produto, unidade, grupo)
+
+    await update.message.reply_text(
+        f"📥 Entrada registrada: {quantidade}{unidade} de {nome} "
+        f"(grupo: {grupo}, data: {data_produto.strftime('%d/%m/%y')})"
+    )
+
 
     # Insertar en la base
     insertar_producto(nome, quantidade, 'entrada', data_produto, unidade, grupo)
@@ -101,26 +107,18 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Comando: saída
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, tipo, grupo = parse_args(update, requiere_fecha=True)
+    nome, quantidade, unidade, data_produto, _, grupo = parse_args(update, requiere_fecha=True)
 
-    # Validar campos
     if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
-            "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm], [grupo]\n"
-            "Exemplo: /saida 5kg, tomate, 26/07, HOR"
+            "❌ Use o formato: /saida [quantidade] [unidade], [produto], [dd/mm], [grupo]\n"
+            "Exemplo: /saida 5 kg, tomate, 29/07, hor"
         )
         return
 
-    if grupo not in GRUPOS_MAP:
-        await update.message.reply_text(
-            f"❌ Grupo '{grupo}' não é válido. Use um destes: {', '.join(GRUPOS_MAP.keys())}"
-        )
-        return
-
-    # Verificar estoque disponible
     produtos = obtener_productos(nome)
     estoque = 0
-    for _, n, q, t, _, _, g in produtos:
+    for _, n, q, t, _, u, g in produtos:
         if n.lower() == nome.lower() and g == grupo:
             if t == 'entrada':
                 estoque += q
@@ -129,17 +127,18 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if estoque < quantidade:
         await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nome} disponível: {estoque}{unidade} no grupo {grupo}."
+            f"❌ Estoque insuficiente. {nome} disponível: {estoque} {unidade}. "
+            f"Tentativa de saída: {quantidade} {unidade}."
         )
         return
 
-    # Registrar saída
     insertar_producto(nome, quantidade, 'saida', data_produto, unidade, grupo)
 
     await update.message.reply_text(
         f"📤 Saída registrada: {quantidade}{unidade} de {nome} "
-        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP[grupo]}"
+        f"(grupo: {grupo}, data: {data_produto.strftime('%d/%m/%y')})"
     )
+
 
 
 
