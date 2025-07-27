@@ -68,6 +68,7 @@ def parse_args(update, requiere_fecha=False):
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nome, quantidade, unidade, data_produto, tipo, grupo = parse_args(update, requiere_fecha=True)
 
+    # Validar campos
     if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
             "❌ Use o formato: /entrada [quantidade+unidade], [produto], [dd/mm], [grupo]\n"
@@ -75,27 +76,48 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    insertar_producto(nome, quantidade, tipo, data_produto, unidade, grupo)
+    # Validar grupo
+    if grupo not in GRUPOS_MAP:
+        await update.message.reply_text(
+            f"❌ Grupo '{grupo}' não é válido. Use um destes: {', '.join(GRUPOS_MAP.keys())}"
+        )
+        return
+
+    # Insertar en la base
+    insertar_producto(nome, quantidade, 'entrada', data_produto, unidade, grupo)
+
+    # Mensaje de confirmación
     await update.message.reply_text(
         f"📥 Entrada registrada: {quantidade}{unidade} de {nome} "
-        f"({data_produto.strftime('%d/%m')}) – Grupo: {grupo}"
+        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP[grupo]}"
     )
+
 
 
 
 # Comando: saída
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, tipo = parse_args(update, requiere_fecha=True)
+    nome, quantidade, unidade, data_produto, tipo, grupo = parse_args(update, requiere_fecha=True)
 
-    if not nome or not quantidade or not unidade or not data_produto:
+    # Validar campos
+    if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
-            "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm]\nExemplo: /saida 3kg, cebola, 25/07")
+            "❌ Use o formato: /saida [quantidade+unidade], [produto], [dd/mm], [grupo]\n"
+            "Exemplo: /saida 5kg, tomate, 26/07, HOR"
+        )
         return
 
+    if grupo not in GRUPOS_MAP:
+        await update.message.reply_text(
+            f"❌ Grupo '{grupo}' não é válido. Use um destes: {', '.join(GRUPOS_MAP.keys())}"
+        )
+        return
+
+    # Verificar estoque disponible
     produtos = obtener_productos(nome)
     estoque = 0
-    for _, n, q, t, _, u in produtos:
-        if n.lower() == nome.lower():
+    for _, n, q, t, _, _, g in produtos:
+        if n.lower() == nome.lower() and g == grupo:
             if t == 'entrada':
                 estoque += q
             elif t in ['saida', 'descarte', 'devolucao']:
@@ -103,14 +125,18 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if estoque < quantidade:
         await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nome} disponível: {estoque} {unidade}. Tentativa de saída: {quantidade} {unidade}."
+            f"❌ Estoque insuficiente. {nome} disponível: {estoque}{unidade} no grupo {grupo}."
         )
         return
 
-    insertar_producto(nome, quantidade, 'saida', data_produto, unidade)
+    # Registrar saída
+    insertar_producto(nome, quantidade, 'saida', data_produto, unidade, grupo)
+
     await update.message.reply_text(
-        f"📤 Saída registrada: {quantidade}{unidade} de {nome} (data: {data_produto.strftime('%d/%m/%y')})"
+        f"📤 Saída registrada: {quantidade}{unidade} de {nome} "
+        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP[grupo]}"
     )
+
 
 
 # Comando: devolução
@@ -273,36 +299,50 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # 1. Determinar la fecha solicitada
-        if context.args:
-            try:
-                fecha_str = context.args[0]
-                fecha = datetime.strptime(fecha_str + "/2025", "%d/%m/%Y").date()
-            except ValueError:
-                await update.message.reply_text("❌ Formato inválido. Use: /movimentos [dd/mm]")
-                return
-        else:
-            fecha = datetime.now().date()
+        hoje = datetime.now().date()
 
-        # 2. Obtener todos los movimientos
+        # Ver si pasaron fecha o rango
+        if context.args:
+            arg = context.args[0]
+            if "-" in arg:
+                inicio_str, fim_str = arg.split("-")
+                inicio = datetime.strptime(inicio_str.strip() + "/2025", "%d/%m/%Y").date()
+                fim = datetime.strptime(fim_str.strip() + "/2025", "%d/%m/%Y").date()
+            else:
+                inicio = fim = datetime.strptime(arg + "/2025", "%d/%m/%Y").date()
+        else:
+            inicio = fim = hoje
+
+        # Obtener productos
         productos = obtener_productos()
 
-        # 3. Filtrar movimientos por la fecha de movimiento (fecha_producto)
-        movimientos_dia = [p for p in productos if p[4] == fecha]
+        # Filtrar por fecha de movimiento (no fecha de producto)
+        movimientos_filtrados = [
+            p for p in productos if inicio <= p[6].date() <= fim
+        ]
 
-        # 4. Si no hay movimientos, avisar
-        if not movimientos_dia:
-            await update.message.reply_text(f"📅 Nenhum movimento registrado em {fecha.strftime('%d/%m')}.")
+        if not movimientos_filtrados:
+            if inicio == fim:
+                await update.message.reply_text(f"📅 Nenhum movimento registrado em {inicio.strftime('%d/%m')}.")
+            else:
+                await update.message.reply_text(f"📅 Nenhum movimento registrado entre {inicio.strftime('%d/%m')} e {fim.strftime('%d/%m')}.")
             return
 
-        # 5. Construir mensaje
-        mensaje = f"📅 *Movimentos de {fecha.strftime('%d/%m')}*\n"
-        for _, nome, quantidade, tipo, data, unidade in movimientos_dia:
-            mensaje += f"• {nome} – {quantidade}{unidade} ({tipo}) – {data.strftime('%d/%m')}\n"
+        # Construir mensaje
+        if inicio == fim:
+            mensaje = f"📅 *Movimentos de {inicio.strftime('%d/%m')}*\n"
+        else:
+            mensaje = f"📅 *Movimentos de {inicio.strftime('%d/%m')} até {fim.strftime('%d/%m')}*\n"
 
-        # 6. Enviar mensaje
+        for _, nome, quantidade, tipo, fecha_producto, unidade, grupo, fecha_mov in sorted(movimientos_filtrados, key=lambda x: x[6]):
+            mensaje += (
+                f"• {nome} – {quantidade}{unidade} ({tipo.upper()}) – Grupo: {grupo} "
+                f"– Produto: {fecha_producto.strftime('%d/%m')} – {fecha_mov.strftime('%H:%M')}\n"
+            )
+
         await update.message.reply_text(mensaje, parse_mode="Markdown")
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao buscar movimentos: {str(e)}")
+
 
