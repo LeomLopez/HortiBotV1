@@ -37,31 +37,35 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Parsear a entrada do usuário
-def parse_args(update, requiere_fecha=False):
+def parse_args(update: Update, requiere_fecha=False):
     try:
-        texto = update.message.text.split(' ', 1)[1]
-        partes = [p.strip() for p in texto.split(',')]
+        partes = update.message.text.split(' ', 1)[1].split(',')
+        partes = [p.strip() for p in partes]  # Limpiar espacios extra
 
         if requiere_fecha:
-            if len(partes) < 3:
-                return None, None, None, None, None
+            # Deben llegar 4 partes: cantidad+unidad, nombre, grupo, fecha
+            if len(partes) < 4:
+                return None, None, None, None, None, None
 
-            # Buscar cantidad y unidad con o sin espacio (ej. "10kg" o "10 kg")
-            match = re.match(r"(\d+)\s*([a-zA-Z]+)", partes[0])
+            # Parsear cantidad y unidad (ej. "10kg")
+            match = re.match(r"(\d+)([a-zA-Z]+)", partes[0])
             if not match:
-                return None, None, None, None, None
-
+                return None, None, None, None, None, None
             cantidad = int(match.group(1))
             unidad = match.group(2).lower()
-            nombre = partes[1].strip().lower()
-            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
 
-            return nombre, cantidad, unidad, fecha_producto, 'entrada'
+            nombre = partes[1].lower()
+            grupo = partes[2].lower()
+
+            fecha_producto = datetime.strptime(partes[3] + "/2025", "%d/%m/%Y").date()
+
+            return nombre, cantidad, unidad, fecha_producto, 'entrada', grupo
         else:
-            return None, None, None  # para otros comandos aún no usados
-    except Exception as e:
-        print(f"❌ Error en parse_args: {e}")
-        return (None,) * (5 if requiere_fecha else 3)
+            # Si no requiere fecha, retorna valores básicos
+            return None, None, None, None, None, None
+    except Exception:
+        return (None,) * 6
+
 
 
 # Comando: entrada
