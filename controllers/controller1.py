@@ -141,10 +141,6 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DESCARTE (manual)
 # ------------------------
 async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Comando para forzar descarte manual de un producto.
-    Formato: /descarte 5 kg, tomate, 29/07, HOR
-    """
     nome, quantidade, unidade, data_produto, grupo = parse_args(update, requiere_fecha=True)
 
     if not nome or not quantidade or not unidade or not data_produto or not grupo:
@@ -162,7 +158,7 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ------------------------
-# VENCIMIENTOS (alerta + descarte auto)
+# VENCIMIENTOS
 # ------------------------
 async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     produtos = obtener_productos()
@@ -256,14 +252,9 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
 # ------------------------
-# MOVIMENTAÇÕES
+# MOVIMENTACOES
 # ------------------------
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Muestra movimientos por fecha o rango:
-    /movimentacoes 29/07
-    /movimentacoes 28/07-30/07
-    """
     try:
         hoje = datetime.now().date()
 
@@ -282,7 +273,7 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Obtener productos
         productos = obtener_productos()
 
-        # Filtrar por fecha de movimiento
+        # Filtrar por fecha de movimiento (índice 7)
         movimientos_filtrados = [
             p for p in productos if inicio <= p[7].date() <= fim
         ]
