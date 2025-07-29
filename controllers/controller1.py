@@ -146,7 +146,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Manejo contenedor
+    # Manejo de contenedor
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
@@ -169,6 +169,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Error en la entrada: {e}")
 
 
+
 # ------------------------
 # SAIDA
 # ------------------------
@@ -187,7 +188,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Manejo contenedor
+    # Manejo de contenedor
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
@@ -200,13 +201,13 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         contenedor = partes[4].strip().upper()
 
-    # Verificar stock
-    productos = obtener_productos(nombre)
-    estoque = sum(q if t == 'entrada' else -q for _, _, q, t, _, _, g, _ in productos if g == grupo)
+    # Verificar stock actual antes de registrar salida
+    stock_actual = obtener_stock_actual(grupo=grupo, nombre=nombre)
+    cantidad_actual = sum([item[1] for item in stock_actual if item[5] == (contenedor or "N/A")])
 
-    if estoque < cantidad:
+    if cantidad_actual < cantidad:
         await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nombre} disponible: {estoque} {unidad}. "
+            f"❌ Estoque insuficiente. {nombre} disponible: {cantidad_actual} {unidad}. "
             f"Tentativa de saída: {cantidad} {unidad}."
         )
         return
@@ -219,6 +220,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error en la saída: {e}")
+
 
 
 
