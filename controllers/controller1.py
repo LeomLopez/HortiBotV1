@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual
 from datetime import datetime
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
@@ -26,9 +26,6 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 # ------------------------
 
 def parse_args(update: Update, requiere_fecha=False):
-    """Parsea el mensaje del usuario en formato:
-    /entrada 20 kg, tomate, 29/07, HOR
-    """
     try:
         partes = update.message.text.split(' ', 1)[1].split(',')
 
@@ -54,9 +51,7 @@ def parse_args(update: Update, requiere_fecha=False):
     except Exception:
         return (None,) * 5
 
-
 def calcular_estoque(nome, grupo, produtos):
-    """Calcula stock actual de un producto en un grupo"""
     estoque = 0
     for _, n, q, t, d, u, g, _ in produtos:
         if n.lower() == nome.lower() and g == grupo:
@@ -66,9 +61,7 @@ def calcular_estoque(nome, grupo, produtos):
                 estoque -= q
     return estoque
 
-
 def mover_para_descarte(produtos):
-    """Mueve automáticamente productos vencidos (1 día después) al descarte"""
     hoje = datetime.now().date()
     for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
         if tipo == "entrada" and (data - hoje).days == -1:
@@ -85,57 +78,106 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(v_menu(), parse_mode="Markdown", reply_markup=menu_markup)
+    mensaje = """
+📋 *Comandos del Bot de Estoque*
+
+*➤ Entrada de productos*
+- HortiFruti / Lácteos / Otros:
+`/entrada 20 kg, tomate, 29/07, HOR`
+
+- Congelados (con contenedor):
+`/entrada 10 kg, pollo, 30/07, CON, C1`
+
+*➤ Salida de productos*
+- HortiFruti / Lácteos / Otros:
+`/saida 5 kg, tomate, 29/07, HOR`
+
+- Congelados (con contenedor):
+`/saida 3 kg, pollo, 30/07, CON, C1`
+
+*➤ Otros comandos*
+- `/estoque` → Ver stock total
+- `/estoque_congelados` → Ver stock congelados por contenedor
+- `/vencimentos` → Alertas de vencimiento
+- `/buscar pollo` → Buscar producto o grupo
+- `/movimentacoes 28/07-30/07` → Historial de movimientos
+
+"""
+    await update.message.reply_text(mensaje, parse_mode="Markdown")
+
 
 # ------------------------
 # ENTRADA
 # ------------------------
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, grupo = parse_args(update, requiere_fecha=True)
+    partes = parse_args(update, requiere_fecha=True)
 
-    if not nome or not quantidade or not unidade or not data_produto or not grupo:
+    # Ahora parse_args retorna: nombre, cantidad, unidad, fecha_producto, grupo
+    # Para congelados necesitamos leer contenedor manualmente
+    try:
+        nombre, cantidad, unidad, fecha_producto, grupo = partes
+        contenedor = None
+        # Si es congelados, verificar que se haya enviado contenedor
+        if grupo == "CON":
+            if len(update.message.text.split(',')) < 5:
+                await update.message.reply_text(
+                    "❌ Para productos congelados debes indicar el contenedor.\n"
+                    "Ejemplo: `/entrada 10 kg, pollo, 30/07, CON, C1`",
+                    parse_mode="Markdown"
+                )
+                return
+            contenedor = update.message.text.split(',')[4].strip().upper()
+
+        insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor)
+
         await update.message.reply_text(
-            "❌ Use o formato: /entrada [quantidade] [unidade], [produto], [dd/mm], [grupo]\n"
-            "Exemplo: /entrada 20 kg, tomate, 29/07, HOR"
+            f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
+            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
-        return
 
-    insertar_producto(nome, quantidade, 'entrada', data_produto, unidade, grupo)
-
-    await update.message.reply_text(
-        f"📥 Entrada registrada: {quantidade}{unidade} de {nome} "
-        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
-    )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error en la entrada: {e}")
 
 # ------------------------
 # SAIDA
 # ------------------------
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome, quantidade, unidade, data_produto, grupo = parse_args(update, requiere_fecha=True)
+    partes = parse_args(update, requiere_fecha=True)
 
-    if not nome or not quantidade or not unidade or not data_produto or not grupo:
+    try:
+        nombre, cantidad, unidad, fecha_producto, grupo = partes
+        contenedor = None
+
+        if grupo == "CON":
+            if len(update.message.text.split(',')) < 5:
+                await update.message.reply_text(
+                    "❌ Para productos congelados debes indicar el contenedor.\n"
+                    "Ejemplo: `/saida 3 kg, pollo, 30/07, CON, C1`",
+                    parse_mode="Markdown"
+                )
+                return
+            contenedor = update.message.text.split(',')[4].strip().upper()
+
+        productos = obtener_productos()
+        estoque = calcular_estoque(nombre, grupo, productos)
+
+        if estoque < cantidad:
+            await update.message.reply_text(
+                f"❌ Estoque insuficiente. {nombre} disponible: {estoque} {unidad}. "
+                f"Tentativa de salida: {cantidad} {unidad}."
+            )
+            return
+
+        insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
+
         await update.message.reply_text(
-            "❌ Use o formato: /saida [quantidade] [unidade], [produto], [dd/mm], [grupo]\n"
-            "Exemplo: /saida 5 kg, tomate, 29/07, HOR"
+            f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
+            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
-        return
 
-    produtos = obtener_productos()
-    estoque = calcular_estoque(nome, grupo, produtos)
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error en la saída: {e}")
 
-    if estoque < quantidade:
-        await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nome} disponível: {estoque} {unidade}. "
-            f"Tentativa de saída: {quantidade} {unidade}."
-        )
-        return
-
-    insertar_producto(nome, quantidade, 'saida', data_produto, unidade, grupo)
-
-    await update.message.reply_text(
-        f"📤 Saída registrada: {quantidade}{unidade} de {nome} "
-        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
-    )
 
 # ------------------------
 # DESCARTE (manual)
@@ -188,12 +230,12 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if alerta_hoy:
         mensagem += "\n⚠️ *Vencem HOJE:*\n"
-        for nome, quantidade, unidade, data in sorted(alerta_hoy, key=lambda x: x[3]):
+        for nome, quantidade, unidade, data in alerta_hoy:
             mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
 
     if alerta_proximos:
         mensagem += "\n⏳ *Próximos a vencer (2 dias):*\n"
-        for nome, quantidade, unidade, data in sorted(alerta_proximos, key=lambda x: x[3]):
+        for nome, quantidade, unidade, data in alerta_proximos:
             mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
@@ -202,58 +244,152 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ESTOQUE
 # ------------------------
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    produtos = obtener_productos()
+    produtos = obtener_stock_actual()  # Optimizado desde stock_actual
     if not produtos:
         await update.message.reply_text("📦 Nenhum item registrado no estoque.")
         return
 
-    hoje = datetime.now().date()
-    grupos_estoque = {}
-
-    for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
-        if data < hoje:
-            continue
-
-        chave = (nome.lower(), data)
-
-        if grupo not in grupos_estoque:
-            grupos_estoque[grupo] = {}
-
-        if chave not in grupos_estoque[grupo]:
-            grupos_estoque[grupo][chave] = {"quantidade": 0, "unidade": unidade}
-
-        if tipo == 'entrada':
-            grupos_estoque[grupo][chave]["quantidade"] += quantidade
-        elif tipo in ['saida', 'descarte', 'devolucao']:
-            grupos_estoque[grupo][chave]["quantidade"] -= quantidade
-
     mensagem = "📦 *Estoque Atual:*\n"
+    grupos = {}
 
-    for cod_grupo, itens in grupos_estoque.items():
-        nome_grupo = GRUPOS_MAP.get(cod_grupo, cod_grupo)
+    for nome, quantidade, unidade, grupo, fecha_producto, contenedor in produtos:
+        grupos.setdefault(grupo, [])
+        grupos[grupo].append((nome, quantidade, unidade, fecha_producto))
 
-        itens_validos = [(nome, data, info["quantidade"], info["unidade"])
-                         for (nome, data), info in itens.items()
-                         if info["quantidade"] > 0]
-
-        if not itens_validos:
-            continue
-
-        itens_ordenados = sorted(itens_validos, key=lambda x: x[1])
-
+    for grupo, items in grupos.items():
+        nome_grupo = GRUPOS_MAP.get(grupo, grupo)
         mensagem += f"\n{nome_grupo}\n"
-        for nome, data, quantidade, unidade in itens_ordenados:
-            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
 
-    if mensagem == "📦 *Estoque Atual:*\n":
-        await update.message.reply_text("📦 Nenhum item válido no estoque.")
-        return
+        # Ya no se vuelve a ordenar: confiamos en el orden SQL
+        for nome, quantidade, unidade, fecha_producto in items:
+            mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
 # ------------------------
-# MOVIMENTACOES
+# ESTOQUE CONGELADOS
 # ------------------------
+async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    hoje = datetime.now().date()
+    produtos = obtener_stock_actual(grupo="CON")
+
+    if not produtos:
+        await update.message.reply_text("❄️ Nenhum item registrado no estoque de congelados.")
+        return
+
+    mensagem = "❄️ *Estoque Congelados por Contenedor:*\n"
+    contenedores = {}
+    alerta_hoy = []
+    alerta_proximos = []
+
+    for nome, quantidade, unidade, grupo, fecha_producto, contenedor in produtos:
+        dias_restantes = (fecha_producto - hoje).days
+        if dias_restantes == 0:
+            alerta_hoy.append((nome, quantidade, unidade, fecha_producto, contenedor))
+        elif 1 <= dias_restantes <= 2:
+            alerta_proximos.append((nome, quantidade, unidade, fecha_producto, contenedor))
+
+        contenedores.setdefault(contenedor, [])
+        contenedores[contenedor].append((nome, quantidade, unidade, fecha_producto))
+
+    for contenedor, items in contenedores.items():
+        mensagem += f"\n*{contenedor}*\n"
+        for nome, quantidade, unidade, fecha_producto in items:
+            mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    if alerta_hoy or alerta_proximos:
+        mensagem += "\n📅 *Alertas de Vencimento*\n"
+
+        if alerta_hoy:
+            mensagem += "\n⚠️ *Vencem HOJE:*\n"
+            for nome, quantidade, unidade, fecha_producto, contenedor in alerta_hoy:
+                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+        if alerta_proximos:
+            mensagem += "\n⏳ *Próximos a vencer (2 dias):*\n"
+            for nome, quantidade, unidade, fecha_producto, contenedor in alerta_proximos:
+                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+# ------------------------
+# BUSCAR
+# ------------------------
+async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Use: /buscar [producto|grupo|contenedor]\n"
+            "Ejemplos:\n"
+            "/buscar pollo\n"
+            "/buscar CON\n"
+            "/buscar C1"
+        )
+        return
+
+    query = " ".join(context.args).strip().upper()
+    grupos_validos = ["HOR", "CON", "LAC", "FRU", "SEC"]
+    contenedores_validos = ["C1", "C2", "C3"]
+
+    # Buscar por grupo
+    if query in grupos_validos:
+        resultados = obtener_stock_actual(grupo=query)
+        if not resultados:
+            await update.message.reply_text(f"📦 Sin stock para el grupo {query}.")
+            return
+
+        mensaje = f"*Stock del grupo {GRUPOS_MAP.get(query, query)}:*\n"
+        if query == "CON":
+            contenedores = {}
+            for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
+                contenedores.setdefault(contenedor, [])
+                contenedores[contenedor].append((nombre, cantidad, unidade, fecha))
+
+            for contenedor, items in contenedores.items():
+                mensaje += f"\n*{contenedor}*\n"
+                for nombre, cantidad, unidade, fecha in items:
+                    mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+        else:
+            for nombre, cantidad, unidade, grupo, fecha, _ in resultados:
+                mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+
+        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        return
+
+    # Buscar por contenedor
+    elif query in contenedores_validos:
+        resultados = obtener_stock_actual(grupo="CON")
+        resultados = [r for r in resultados if r[5] == query]
+
+        if not resultados:
+            await update.message.reply_text(f"📦 Sin stock en el contenedor {query}.")
+            return
+
+        mensaje = f"*Stock en Contenedor {query} (Congelados):*\n"
+        for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
+            mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+
+        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        return
+
+    # Buscar por producto
+    else:
+        resultados = obtener_stock_actual(nombre=query.lower())
+
+        if not resultados:
+            await update.message.reply_text(f"📦 No se encontró stock para '{query}'.")
+            return
+
+        mensaje = f"*Resultados para '{query}':*\n"
+        for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
+            grupo_nombre = GRUPOS_MAP.get(grupo, grupo)
+            if grupo == "CON":
+                mensaje += f"• {cantidad}{unidade} – {grupo_nombre} ({contenedor}) – {fecha.strftime('%d/%m')}\n"
+            else:
+                mensaje += f"• {cantidad}{unidade} – {grupo_nombre} – {fecha.strftime('%d/%m')}\n"
+
+        await update.message.reply_text(mensaje, parse_mode="Markdown")
+
+
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         hoje = datetime.now().date()
@@ -270,10 +406,10 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             inicio = fim = hoje
 
-        # Obtener productos
+        # Obtener movimientos históricos
         productos = obtener_productos()
 
-        # Filtrar por fecha de movimiento (índice 7)
+        # Filtrar por fecha de movimiento (índice 7 en la tupla)
         movimientos_filtrados = [
             p for p in productos if inicio <= p[7].date() <= fim
         ]
@@ -285,12 +421,13 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"📅 Nenhum movimento registrado entre {inicio.strftime('%d/%m')} e {fim.strftime('%d/%m')}.")
             return
 
-        # Construir mensaje
+        # Construir mensaje (orden ascendente por fecha_movimiento)
         if inicio == fim:
             mensaje = f"📅 *Movimentos de {inicio.strftime('%d/%m')}*\n"
         else:
             mensaje = f"📅 *Movimentos de {inicio.strftime('%d/%m')} até {fim.strftime('%d/%m')}*\n"
 
+        # Ordenar por fecha de movimiento ascendente
         for _, nome, quantidade, tipo, fecha_producto, unidade, grupo, fecha_mov in sorted(movimientos_filtrados, key=lambda x: x[7]):
             mensaje += (
                 f"• {nome} – {quantidade}{unidade} ({tipo.upper()}) – Grupo: {grupo} "

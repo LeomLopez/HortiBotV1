@@ -48,10 +48,10 @@ def crear_tablas_productos():
 # ----------------------------
 # Insertar producto / movimiento
 # ----------------------------
-def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo):
+def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor=None):
     """
-    Inserta o actualiza un movimiento (entrada, salida, descarte, devolución).
-    Suma cantidades si ya existe el mismo registro.
+    Inserta movimiento en historial y actualiza stock_actual.
+    Maneja duplicados para 'descarte' y valida contenedor para congelados.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -60,20 +60,48 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo):
     nombre = nombre.lower()
     tipo = tipo.lower()
     unidade = unidade.lower()
-    grupo = grupo.upper()  # En mayúsculas para coincidir con GRUPOS_MAP
+    grupo = grupo.upper()
 
+    # Manejo de contenedor
+    if grupo == "CON":
+        if not contenedor:
+            raise ValueError("Debe indicar contenedor (C1, C2 o C3) para congelados.")
+        contenedor = contenedor.upper()
+    else:
+        contenedor = "N/A"  # Otros grupos no usan contenedor
+
+    # 1. Insertar en movimientos (histórico)
+    if tipo == "descarte":
+        cursor.execute("""
+            INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo, contenedor) DO NOTHING
+        """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
+    else:
+        cursor.execute("""
+            INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
+
+    # 2. Actualizar stock_actual
+    signo = 1 if tipo == "entrada" else -1
     cursor.execute("""
-        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo)
+        INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
         VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo)
-        DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
-    """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo))
+        ON CONFLICT (nombre, unidade, grupo, fecha_producto, contenedor)
+        DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad;
+    """, (nombre, unidade, grupo, fecha_producto, contenedor, cantidad * signo))
+
+    # 3. Eliminar registros con cantidad <= 0
+    cursor.execute("""
+        DELETE FROM stock_actual
+        WHERE cantidad <= 0;
+    """)
 
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Producto '{nombre}' ({grupo}) actualizado/inserido com sucesso.")
-
+    print(f"✅ Producto '{nombre}' ({tipo}) registrado correctamente.")
 
 # ----------------------------
 # Obtener productos
@@ -106,4 +134,38 @@ def obtener_productos(nombre=None):
     conn.close()
 
     return productos
+
+from datetime import datetime
+
+def obtener_stock_actual(grupo=None, nombre=None):
+    """
+    Devuelve el stock actual filtrado por grupo o nombre,
+    ignorando productos vencidos.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = """
+        SELECT nombre, cantidad, unidade, grupo, fecha_producto, contenedor
+        FROM stock_actual
+        WHERE cantidad > 0 AND fecha_producto >= %s
+    """
+    params = [datetime.now().date()]
+
+    if grupo:
+        query += " AND grupo = %s"
+        params.append(grupo.upper())
+    if nombre:
+        query += " AND nombre = %s"
+        params.append(nombre.lower())
+
+    query += " ORDER BY grupo, fecha_producto"
+
+    cursor.execute(query, params)
+    resultado = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return resultado
 
