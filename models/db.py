@@ -50,8 +50,8 @@ def crear_tablas_productos():
 # ----------------------------
 def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor=None):
     """
-    Inserta movimiento y actualiza stock_actual.
-    Maneja duplicados para descarte y valida contenedor para congelados.
+    Inserta o actualiza un movimiento y el stock actual.
+    - Si el movimiento es idéntico, suma cantidades en movimientos y stock_actual.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -70,20 +70,15 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     else:
         contenedor = "N/A"
 
-    # Insertar en movimientos
-    if tipo == "descarte":
-        cursor.execute("""
-            INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo, contenedor) DO NOTHING
-        """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
-    else:
-        cursor.execute("""
-            INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
+    # 1. Insertar o sumar en movimientos
+    cursor.execute("""
+        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo, contenedor)
+        DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
+    """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
 
-    # Actualizar stock_actual
+    # 2. Actualizar stock_actual
     signo = 1 if tipo == "entrada" else -1
     cursor.execute("""
         INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
@@ -92,13 +87,13 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
         DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad;
     """, (nombre, unidade, grupo, fecha_producto, contenedor, cantidad * signo))
 
-    # Eliminar registros vacíos
+    # 3. Limpiar stock con cantidad <= 0
     cursor.execute("DELETE FROM stock_actual WHERE cantidad <= 0;")
 
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Producto '{nombre}' ({tipo}) insertado correctamente.")
+    print(f"✅ Producto '{nombre}' ({tipo}) insertado/actualizado correctamente.")
 
 # ----------------------------
 # Obtener productos
