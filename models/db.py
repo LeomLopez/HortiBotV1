@@ -50,27 +50,27 @@ def crear_tablas_productos():
 # ----------------------------
 def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor=None):
     """
-    Inserta movimiento en historial y actualiza stock_actual.
-    Maneja duplicados para 'descarte' y valida contenedor para congelados.
+    Inserta movimiento y actualiza stock_actual.
+    Maneja duplicados para descarte y valida contenedor para congelados.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Normalizar datos
-    nombre = nombre.lower()
-    tipo = tipo.lower()
-    unidade = unidade.lower()
-    grupo = grupo.upper()
+    # Normalización
+    if nombre: nombre = nombre.lower()
+    if tipo: tipo = tipo.lower()
+    if unidade: unidade = unidade.lower()
+    if grupo: grupo = grupo.upper()
 
-    # Manejo de contenedor
+    # Manejo contenedor
     if grupo == "CON":
         if not contenedor:
             raise ValueError("Debe indicar contenedor (C1, C2 o C3) para congelados.")
         contenedor = contenedor.upper()
     else:
-        contenedor = "N/A"  # Otros grupos no usan contenedor
+        contenedor = "N/A"
 
-    # 1. Insertar en movimientos (histórico)
+    # Insertar en movimientos
     if tipo == "descarte":
         cursor.execute("""
             INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
@@ -83,7 +83,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
 
-    # 2. Actualizar stock_actual
+    # Actualizar stock_actual
     signo = 1 if tipo == "entrada" else -1
     cursor.execute("""
         INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
@@ -92,16 +92,13 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
         DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad;
     """, (nombre, unidade, grupo, fecha_producto, contenedor, cantidad * signo))
 
-    # 3. Eliminar registros con cantidad <= 0
-    cursor.execute("""
-        DELETE FROM stock_actual
-        WHERE cantidad <= 0;
-    """)
+    # Eliminar registros vacíos
+    cursor.execute("DELETE FROM stock_actual WHERE cantidad <= 0;")
 
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Producto '{nombre}' ({tipo}) registrado correctamente.")
+    print(f"✅ Producto '{nombre}' ({tipo}) insertado correctamente.")
 
 # ----------------------------
 # Obtener productos

@@ -26,22 +26,43 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 # ------------------------
 
 def parse_args(update: Update, requiere_fecha=False):
+    """
+    Parsea mensaje en formato:
+    /entrada 20 kg, tomate, 29/07, HOR
+    /entrada 10 kg, pollo, 29/07, CON, C1
+    Devuelve: nombre, cantidad, unidad, fecha_producto, grupo
+    """
     try:
-        partes = update.message.text.split(' ', 1)[1].split(',')
+        # Separar comando de argumentos
+        texto = update.message.text.split(' ', 1)
+        if len(texto) < 2:
+            return None, None, None, None, None
+
+        partes = texto[1].split(',')
 
         if requiere_fecha:
-            if len(partes) < 4:
+            if len(partes) < 4:  # Faltan parámetros
                 return None, None, None, None, None
 
+            # Cantidad y unidad
             cant_unid = partes[0].strip().split()
             if len(cant_unid) != 2:
                 return None, None, None, None, None
 
-            cantidad = int(cant_unid[0])
-            unidad = cant_unid[1].lower()
+            try:
+                cantidad = int(cant_unid[0])
+            except ValueError:
+                return None, None, None, None, None
 
+            unidad = cant_unid[1].lower()
             nombre = partes[1].strip().lower()
-            fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
+
+            # Fecha
+            try:
+                fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
+            except ValueError:
+                return None, None, None, None, None
+
             grupo = partes[3].strip().upper()
 
             return nombre, cantidad, unidad, fecha_producto, grupo
@@ -50,6 +71,7 @@ def parse_args(update: Update, requiere_fecha=False):
 
     except Exception:
         return (None,) * 5
+
 
 def calcular_estoque(nome, grupo, produtos):
     estoque = 0
@@ -110,73 +132,94 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ENTRADA
 # ------------------------
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    partes = parse_args(update, requiere_fecha=True)
+    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
-    # Ahora parse_args retorna: nombre, cantidad, unidad, fecha_producto, grupo
-    # Para congelados necesitamos leer contenedor manualmente
+    # Validación básica
+    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "*No congelados (HOR/LAC/etc):*\n"
+            "`/entrada 20 kg, tomate, 30/07, HOR`\n\n"
+            "*Congelados (CON):*\n"
+            "`/entrada 10 kg, pollo, 30/07, CON, C1`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Manejo contenedor
+    contenedor = None
+    if grupo == "CON":
+        partes = update.message.text.split(',')
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Debes indicar contenedor (C1/C2/C3) para congelados.\n"
+                "Ejemplo: `/entrada 10 kg, pollo, 30/07, CON, C1`",
+                parse_mode="Markdown"
+            )
+            return
+        contenedor = partes[4].strip().upper()
+
     try:
-        nombre, cantidad, unidad, fecha_producto, grupo = partes
-        contenedor = None
-        # Si es congelados, verificar que se haya enviado contenedor
-        if grupo == "CON":
-            if len(update.message.text.split(',')) < 5:
-                await update.message.reply_text(
-                    "❌ Para productos congelados debes indicar el contenedor.\n"
-                    "Ejemplo: `/entrada 10 kg, pollo, 30/07, CON, C1`",
-                    parse_mode="Markdown"
-                )
-                return
-            contenedor = update.message.text.split(',')[4].strip().upper()
-
         insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor)
-
         await update.message.reply_text(
             f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
-
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error en la entrada: {e}")
+
 
 # ------------------------
 # SAIDA
 # ------------------------
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    partes = parse_args(update, requiere_fecha=True)
+    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
-    try:
-        nombre, cantidad, unidad, fecha_producto, grupo = partes
-        contenedor = None
+    # Validación básica
+    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "*No congelados (HOR/LAC/etc):*\n"
+            "`/saida 5 kg, tomate, 30/07, HOR`\n\n"
+            "*Congelados (CON):*\n"
+            "`/saida 3 kg, pollo, 30/07, CON, C1`",
+            parse_mode="Markdown"
+        )
+        return
 
-        if grupo == "CON":
-            if len(update.message.text.split(',')) < 5:
-                await update.message.reply_text(
-                    "❌ Para productos congelados debes indicar el contenedor.\n"
-                    "Ejemplo: `/saida 3 kg, pollo, 30/07, CON, C1`",
-                    parse_mode="Markdown"
-                )
-                return
-            contenedor = update.message.text.split(',')[4].strip().upper()
-
-        productos = obtener_productos()
-        estoque = calcular_estoque(nombre, grupo, productos)
-
-        if estoque < cantidad:
+    # Manejo contenedor
+    contenedor = None
+    if grupo == "CON":
+        partes = update.message.text.split(',')
+        if len(partes) < 5:
             await update.message.reply_text(
-                f"❌ Estoque insuficiente. {nombre} disponible: {estoque} {unidad}. "
-                f"Tentativa de salida: {cantidad} {unidad}."
+                "❌ Debes indicar contenedor (C1/C2/C3) para congelados.\n"
+                "Ejemplo: `/saida 3 kg, pollo, 30/07, CON, C1`",
+                parse_mode="Markdown"
             )
             return
+        contenedor = partes[4].strip().upper()
 
+    # Verificar stock
+    productos = obtener_productos(nombre)
+    estoque = sum(q if t == 'entrada' else -q for _, _, q, t, _, _, g, _ in productos if g == grupo)
+
+    if estoque < cantidad:
+        await update.message.reply_text(
+            f"❌ Estoque insuficiente. {nombre} disponible: {estoque} {unidad}. "
+            f"Tentativa de saída: {cantidad} {unidad}."
+        )
+        return
+
+    try:
         insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
-
         await update.message.reply_text(
             f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
-
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error en la saída: {e}")
+
 
 
 # ------------------------
