@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup
+''''from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto
@@ -114,3 +114,55 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mensaje += f"• {p[1]} | {p[2]} unid | {p[3]} | {p[4].strftime('%Y-%m-%d %H:%M')}\n"
 
     await update.message.reply_text(mensaje)
+
+
+from telegram import Update, ReplyKeyboardMarkup, BotCommand
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from config.config import BOT_TOKEN
+from controllers.controller1 import (
+    start, menu, entrada, saida, vencimentos, movimentacoes,
+    estoque_congelados, buscar, descarte, estoque_horti,
+    on_keyboard_horti, on_keyboard_congelados
+)
+from models.db import crear_tablas_productos, insertar_producto, obtener_productos
+
+# Define comandos visibles en el menú
+BOT_COMMANDS = [
+    BotCommand("start", "Iniciar o bot"),
+    BotCommand("menu", "Mostrar o menu principal"),
+    BotCommand("entrada", "Registrar uma entrada de produto"),
+    BotCommand("saida", "Registrar uma saída de produto"),
+    BotCommand("descarte", "Registrar um descarte"),
+    BotCommand("buscar", "Buscar produtos no estoque"),
+    BotCommand("vencimentos", "Ver produtos vencidos"),
+    BotCommand("estoque_horti", "Ver estoque de hortifruti"),
+    BotCommand("estoque_congelados", "Ver estoque de produtos congelados"),
+    BotCommand("movimentacoes", "Ver últimas movimentações"),
+]
+
+async def set_commands(application):
+    await application.bot.set_my_commands(BOT_COMMANDS)
+
+# Crear la app
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# Handlers de comandos
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("menu", menu))
+application.add_handler(CommandHandler("entrada", entrada))
+application.add_handler(CommandHandler("saida", saida))
+application.add_handler(CommandHandler("vencimentos", vencimentos))
+application.add_handler(CommandHandler("descarte", descarte))
+application.add_handler(CommandHandler("estoque_horti", estoque_horti))
+application.add_handler(CommandHandler("estoque_congelados", estoque_congelados))
+application.add_handler(CommandHandler("buscar", buscar))
+application.add_handler(CommandHandler("movimentacoes", movimentacoes))
+
+# Handlers de botones del teclado
+application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^🥕 HortiFruti$"), on_keyboard_horti))
+application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^❄️ Congelados$"), on_keyboard_congelados))
+
+# Llama a set_commands luego de iniciar
+application.post_init = set_commands
+
+application.run_polling()''''
