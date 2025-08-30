@@ -87,10 +87,9 @@ def parse_args(update: Update, requiere_fecha=False):
             unidad = cant_unid[1].lower()
             nombre = partes[1].strip().lower()
 
-            # Fecha
-            try:
-                fecha_producto = datetime.strptime(partes[2].strip() + "/2025", "%d/%m/%Y").date()
-            except ValueError:
+            # ✅ usar tu parser flexible (dd/mm | dd/mm/yy | dd/mm/yyyy)
+            fecha_producto = parse_fecha_flexible(partes[2])
+            if not fecha_producto:
                 return None, None, None, None, None
 
             grupo = partes[3].strip().upper()
