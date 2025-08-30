@@ -2,7 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual
-from datetime import datetime
+from datetime import datetime, date
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
 GRUPOS_MAP = {
@@ -24,6 +24,36 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 # ------------------------
 # Funciones Auxiliares
 # ------------------------
+
+def parse_fecha_flexible(fecha_str: str) -> date | None:
+    """
+    Acepta:
+    - 'dd/mm'       -> usa el año actual
+    - 'dd/mm/yy'    -> convierte a 20yy (ej: '26' -> 2026)
+    - 'dd/mm/yyyy'  -> año completo
+    También tolera 'dd-mm' reemplazando por '/'.
+    """
+    if not fecha_str:
+        return None
+
+    s = fecha_str.strip().replace('-', '/')
+    hoy = datetime.now()
+
+    try:
+        partes = s.split('/')
+        if len(partes) == 2:
+            d, m = partes
+            return datetime.strptime(f"{d}/{m}/{hoy.year}", "%d/%m/%Y").date()
+        elif len(partes) == 3:
+            d, m, a = partes
+            a = a.strip()
+            if len(a) == 2:
+                a = "20" + a  # ej: 26 -> 2026
+            return datetime.strptime(f"{d}/{m}/{a}", "%d/%m/%Y").date()
+        else:
+            return None
+    except ValueError:
+        return None
 
 def parse_args(update: Update, requiere_fecha=False):
     """
@@ -101,28 +131,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = """
-📋 *Comandos del Bot de Estoque*
+📋 *Comandos do Bot de Estoque*
 
-*➤ Entrada de productos*
-- HortiFruti / Lácteos / Otros:
+*➤ Entrada de produtos*
+- HortiFruti / Laticínios / Outros:
 `/entrada 20 kg, tomate, 29/07, HOR`
 
-- Congelados (con contenedor):
-`/entrada 10 kg, pollo, 30/07, CON, C1`
+- Congelados (com contêiner):
+`/entrada 10 kg, frango, 30/07, CON, C1`
 
-*➤ Salida de productos*
-- HortiFruti / Lácteos / Otros:
+*➤ Saída de produtos*
+- HortiFruti / Laticínios / Outros:
 `/saida 5 kg, tomate, 29/07, HOR`
 
-- Congelados (con contenedor):
-`/saida 3 kg, pollo, 30/07, CON, C1`
+- Congelados (com contêiner):
+`/saida 3 kg, frango, 30/07, CON, C1`
 
-*➤ Otros comandos*
-- `/estoque` → Ver stock total
-- `/estoque_congelados` → Ver stock congelados por contenedor
-- `/vencimentos` → Alertas de vencimiento
-- `/buscar pollo` → Buscar producto o grupo
-- `/movimentacoes 28/07-30/07` → Historial de movimientos
+*➤ Outros comandos*
+- `/estoque` → Ver estoque total  
+- `/estoque_congelados` → Ver estoque de congelados por contêiner  
+- `/vencimentos` → Alertas de vencimento  
+- `/buscar frango` → Buscar produto ou grupo  
+- `/movimentacoes 28/07-30/07` → Histórico de movimentações
 
 """
     await update.message.reply_text(mensaje, parse_mode="Markdown")
@@ -138,10 +168,10 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
-            "*No congelados (HOR/LAC/etc):*\n"
+            "*Não congelados (HOR/LAC/etc):*\n"
             "`/entrada 20 kg, tomate, 30/07, HOR`\n\n"
             "*Congelados (CON):*\n"
-            "`/entrada 10 kg, pollo, 30/07, CON, C1`",
+            "`/entrada 10 kg, frango, 30/07, CON, C1`",
             parse_mode="Markdown"
         )
         return
@@ -152,8 +182,8 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         partes = update.message.text.split(',')
         if len(partes) < 5:
             await update.message.reply_text(
-                "❌ Debes indicar contenedor (C1/C2/C3) para congelados.\n"
-                "Ejemplo: `/entrada 10 kg, pollo, 30/07, CON, C1`",
+                "❌ Você deve indicar o contêiner (C1/C2/C3) para congelados.\n"
+                "Exemplo: `/entrada 10 kg, frango, 30/07, CON, C1`",
                 parse_mode="Markdown"
             )
             return
@@ -166,7 +196,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Error en la entrada: {e}")
+        await update.message.reply_text(f"⚠️ Erro na entrada: {e}")
 
 
 
@@ -180,10 +210,10 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
-            "*No congelados (HOR/LAC/etc):*\n"
+            "*Não congelados (HOR/LAC/etc):*\n"
             "`/saida 5 kg, tomate, 30/07, HOR`\n\n"
             "*Congelados (CON):*\n"
-            "`/saida 3 kg, pollo, 30/07, CON, C1`",
+            "`/saida 3 kg, frango, 30/07, CON, C1`",
             parse_mode="Markdown"
         )
         return
@@ -194,8 +224,8 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         partes = update.message.text.split(',')
         if len(partes) < 5:
             await update.message.reply_text(
-                "❌ Debes indicar contenedor (C1/C2/C3) para congelados.\n"
-                "Ejemplo: `/saida 3 kg, pollo, 30/07, CON, C1`",
+                "❌ Você deve indicar o contêiner (C1/C2/C3) para congelados.\n"
+                "Exemplo: `/saida 3 kg, frango, 30/07, CON, C1`",
                 parse_mode="Markdown"
             )
             return
@@ -363,11 +393,12 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "❌ Use: /buscar [producto|grupo|contenedor]\n"
-            "Ejemplos:\n"
-            "/buscar pollo\n"
+            "❌ Use: /buscar [produto|grupo|contêiner]\n"
+            "Exemplos:\n"
+            "/buscar frango\n"
             "/buscar CON\n"
             "/buscar C1"
+
         )
         return
 
@@ -379,10 +410,10 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query in grupos_validos:
         resultados = obtener_stock_actual(grupo=query)
         if not resultados:
-            await update.message.reply_text(f"📦 Sin stock para el grupo {query}.")
+            await update.message.reply_text(f"📦 Sem estoque para o grupo {query}.")
             return
 
-        mensaje = f"*Stock del grupo {GRUPOS_MAP.get(query, query)}:*\n"
+        mensaje = f"*Estoque do grupo {GRUPOS_MAP.get(query, query)}:*\n"
         if query == "CON":
             contenedores = {}
             for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
@@ -406,10 +437,10 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resultados = [r for r in resultados if r[5] == query]
 
         if not resultados:
-            await update.message.reply_text(f"📦 Sin stock en el contenedor {query}.")
+            await update.message.reply_text(f"📦 Sem estoque para o grupo {query}.")
             return
 
-        mensaje = f"*Stock en Contenedor {query} (Congelados):*\n"
+        mensaje = f"*Estoque no Contêiner {query} (Congelados):*\n"
         for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
             mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
 
@@ -421,7 +452,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resultados = obtener_stock_actual(nombre=query.lower())
 
         if not resultados:
-            await update.message.reply_text(f"📦 No se encontró stock para '{query}'.")
+            await update.message.reply_text(f"📦 Não foi encontrado estoque para '{query}'.")
             return
 
         mensaje = f"*Resultados para '{query}':*\n"
