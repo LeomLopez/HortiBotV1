@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto, obtener_stock_actual
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion
 from datetime import datetime, date
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
@@ -10,8 +10,11 @@ GRUPOS_MAP = {
     "FRU": "🍎 Frutas",
     "LAC": "🧀 Lácteos",
     "CON": "❄️ Congelados",
-    "SEC": "📦 Secos"
+    "SEC": "📦 Secos",
+    "QUI": "🧪 Químicos",        
+    "DES": "🧻 Descartáveis"     
 }
+
 
 # Teclado personalizado
 keyboard = [
@@ -385,6 +388,90 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+    
+
+# ------------------------
+# ESTOQUE SECOS
+# ------------------------
+async def estoque_secos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    resultados = obtener_stock_actual(grupo="SEC")
+
+    if not resultados:
+        await update.message.reply_text("📦 Nenhum item registrado no Estoque Seco.")
+        return
+
+    mensagem = "📦 *Estoque – Secos*\n"
+    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+# ------------------------
+# ESTOQUE QUÍMICOS
+# ------------------------
+async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    resultados = obtener_stock_actual(grupo="QUI")
+
+    if not resultados:
+        await update.message.reply_text("🧪 Nenhum item registrado no Estoque Químico.")
+        return
+
+    mensagem = "🧪 *Estoque – Químicos*\n"
+    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+
+# ------------------------
+# ESTOQUE DESCARTÁVEIS
+# ------------------------
+async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    resultados = obtener_stock_actual(grupo="DES")
+
+    if not resultados:
+        await update.message.reply_text("🧻 Nenhum item registrado no Estoque Descartáveis.")
+        return
+
+    mensagem = "🧻 *Estoque – Descartáveis*\n"
+    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+# ------------------------
+# ESTOQUE QUÍMICOS
+# ------------------------
+async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    resultados = obtener_stock_actual(grupo="QUI")
+
+    if not resultados:
+        await update.message.reply_text("🧪 Nenhum item registrado no Estoque Químico.")
+        return
+
+    mensagem = "🧪 *Estoque – Químicos*\n"
+    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
+
+# ------------------------
+# ESTOQUE DESCARTÁVEIS
+# ------------------------
+async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    resultados = obtener_stock_actual(grupo="DES")
+
+    if not resultados:
+        await update.message.reply_text("🧻 Nenhum item registrado no Estoque Descartáveis.")
+        return
+
+    mensagem = "🧻 *Estoque – Descartáveis*\n"
+    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
+        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 # ------------------------
 # BUSCAR

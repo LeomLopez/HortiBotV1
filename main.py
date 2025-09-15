@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config.config import BOT_TOKEN
-from controllers.controller1 import start, menu, entrada, saida, estoque, vencimentos, movimentacoes,estoque_congelados, buscar, descarte
+from controllers.controller1 import start, menu, entrada, saida, estoque, vencimentos, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis   
 from models.db import crear_tablas_productos, insertar_producto, obtener_productos
 
 
@@ -16,6 +16,9 @@ BOT_COMMANDS = [
     BotCommand("vencimentos", "Ver produtos vencidos"),
     BotCommand("estoque", "Ver resumo geral"),
     BotCommand("estoque_congelados", "Ver estoque de produtos congelados"),
+    BotCommand("estoque_secos", "Ver estoque de produtos secos"),
+    BotCommand("estoque_quimicos", "Ver estoque de produtos químicos"),
+    BotCommand("estoque_descartaveis", "Ver estoque de produtos descartáveis"),
     BotCommand("movimentacoes", "Ver últimas movimentações"),
 ]
 
@@ -35,6 +38,9 @@ application.add_handler(CommandHandler("vencimentos", vencimentos))
 application.add_handler(CommandHandler("descarte", descarte))
 application.add_handler(CommandHandler("estoque", estoque))
 application.add_handler(CommandHandler("estoque_congelados", estoque_congelados))
+application.add_handler(CommandHandler("estoque_secos", estoque_secos))
+application.add_handler(CommandHandler("estoque_quimicos", estoque_quimicos))
+application.add_handler(CommandHandler("estoque_descartaveis", estoque_descartaveis))
 application.add_handler(CommandHandler("buscar", buscar))
 
 application.add_handler(CommandHandler("movimentacoes", movimentacoes))

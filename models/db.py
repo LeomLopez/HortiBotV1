@@ -163,3 +163,25 @@ def obtener_stock_actual(grupo=None, nombre=None):
 
     return resultado
 
+def obtener_ultima_actualizacion(grupo=None):
+    """
+    Devuelve la fecha/hora de la última actualización del stock.
+    Si grupo se pasa, filtra por ese grupo.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT MAX(fecha_movimiento) FROM movimientos WHERE 1=1"
+    params = []
+
+    if grupo:
+        query += " AND grupo = %s"
+        params.append(grupo.upper())
+
+    cursor.execute(query, params)
+    result = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+
+    return result

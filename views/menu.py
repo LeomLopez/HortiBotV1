@@ -11,6 +11,10 @@ def get_menu_text():
 
 📦 /estoque – Ver estoque total atual  
 🔍 /estoque_prod nome – Ver estoque de um produto específico  
+📦 /estoque_secos – Ver estoque seco 
+📦 /estoque_secos – Ver estoque seco  
+🧪 /estoque_quimicos – Ver estoque químico  
+🧻 /estoque_descartaveis – Ver estoque descartáveis 
 📆 /planejado – Ver itens planejados do dia  
 📝 /resumo – Resumo do dia (entradas, saídas, descartes)
 
