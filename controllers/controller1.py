@@ -5,6 +5,7 @@ from models.db import obtener_productos, insertar_producto, obtener_stock_actual
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha
+import unicodedata
 
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
@@ -30,6 +31,21 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 # ------------------------
 # Funciones Auxiliares
 # ------------------------
+
+def _only_date(d):
+    if d is None: return None
+    if isinstance(d, datetime): return d.date()
+    return d
+
+def _fmt_fecha(d):
+    d = _only_date(d)
+    return d.strftime("%d/%m") if d else "—"
+
+def _norm(s: str) -> str:
+    # lower + sin acentos
+    s = (s or "").lower().strip()
+    s = unicodedata.normalize("NFD", s)
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
 
 def parse_fecha_flexible(fecha_str: str) -> date | None:
     """
@@ -545,25 +561,26 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
 # BUSCAR
 # ------------------------
 async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Sin mensaje de ayuda: si no hay argumentos, no respondemos.
+    # Sin mensaje de ayuda: si no hay argumentos, no respondemos
     if not context.args:
         return
 
-    query = " ".join(context.args).strip().upper()
+    raw_query = " ".join(context.args).strip()   # texto tal cual (para mostrar)
+    query_upper = raw_query.upper()              # para HOR/CON/LAC/FRU/SEC y C1/C2/C3
     grupos_validos = ["HOR", "CON", "LAC", "FRU", "SEC"]
     contenedores_validos = ["C1", "C2", "C3"]
 
-    # Buscar por grupo (HOR/CON/LAC/FRU/SEC)
-    if query in grupos_validos:
-        resultados = obtener_stock_actual(grupo=query)
+    # --- Buscar por GRUPO ---
+    if query_upper in grupos_validos:
+        resultados = obtener_stock_actual(grupo=query_upper)
         if not resultados:
-            await update.message.reply_text(f"📦 Sem estoque no grupo {GRUPOS_MAP.get(query, query)}.")
+            await update.message.reply_text(f"📦 Sem estoque no grupo {GRUPOS_MAP.get(query_upper, query_upper)}.")
             return
 
-        mensaje = f"*Estoque do grupo {GRUPOS_MAP.get(query, query)}:*\n"
+        mensaje = f"*Estoque do grupo {GRUPOS_MAP.get(query_upper, query_upper)}:*\n"
 
         # Congelados: agrupar por contêiner
-        if query == "CON":
+        if query_upper == "CON":
             contenedores = {}
             for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
                 contenedores.setdefault(contenedor, [])
@@ -581,62 +598,70 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(mensaje, parse_mode="Markdown")
         return
 
-    # Buscar por contêiner (C1/C2/C3)
-    elif query in contenedores_validos:
+    # --- Buscar por CONTÊINER ---
+    elif query_upper in contenedores_validos:
         resultados = obtener_stock_actual(grupo="CON")
-        resultados = [r for r in resultados if (r[5] or "") == query]
+        resultados = [r for r in resultados if (r[5] or "") == query_upper]
 
         if not resultados:
-            await update.message.reply_text(f"📦 Sem estoque no contêiner {query}.")
+            await update.message.reply_text(f"📦 Sem estoque no contêiner {query_upper}.")
             return
 
-        mensaje = f"*Estoque no Contêiner {query} (Congelados):*\n"
+        mensaje = f"*Estoque no Contêiner {query_upper} (Congelados):*\n"
         for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
             mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
 
         await update.message.reply_text(mensaje, parse_mode="Markdown")
         return
 
-        # Buscar por produto (texto livre)
+    # --- Buscar por PRODUTO (texto livre, 1+ palavras, sem acentos) ---
     else:
-        resultados = obtener_stock_actual(nombre=query.lower())
+        # Traer todo el stock y filtrar en Python por tokens normalizados
+        todos = obtener_stock_actual()  # [(nombre, q, un, grupo, fecha, cont), ...]
+        tokens = [_norm(t) for t in raw_query.split() if t.strip()]
+        if not tokens:
+            return
 
-        if not resultados:
-            await update.message.reply_text(f"📦 Não foi encontrado estoque para '{query}'.")
+        filtrados = []
+        for nombre, quantidade, unidade, grupo, fecha, contenedor in todos:
+            nom_norm = _norm(nombre)
+            if all(tok in nom_norm for tok in tokens):  # AND de tokens
+                filtrados.append((nombre, quantidade, unidade, grupo, fecha, contenedor))
+
+        if not filtrados:
+            await update.message.reply_text(f"📦 Não foi encontrado estoque para '{query_upper}'.")
             return
 
         # Agrupar por (grupo, nombre, unidade) y consolidar lotes por (fecha, contêiner)
         grupos_prod = {}
-        for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
+        for nombre, quantidade, unidade, grupo, fecha, cont in filtrados:
             key = (grupo, (nombre or "").strip(), (unidade or "").strip())
-            grupos_prod.setdefault(key, []).append((_only_date(fecha), int(quantidade or 0), contenedor or ""))
+            grupos_prod.setdefault(key, []).append((_only_date(fecha), int(quantidade or 0), cont or ""))
 
-        # Mensaje
-        mensaje = f"*Resultados para '{query}':*\n"
-
+        # Construir mensaje: encabezado por producto, lotes debajo
+        mensaje = f"*Resultados para '{raw_query}':*\n"
         # Ordenar productos por nombre (A-Z) y luego por grupo
         for (grupo, nombre, unidade) in sorted(grupos_prod.keys(), key=lambda k: (k[1].lower(), k[0])):
             grupo_nombre = GRUPOS_MAP.get(grupo, grupo)
             mensaje += f"[{grupo_nombre}] {nombre}\n"
 
-            # Consolidar lotes repetidos por (fecha, contêiner) y ordenarlos por fecha asc (None al final)
+            # Consolidar lotes (fecha, cont) y ordenarlos por fecha asc (None al final)
             acc = {}
-            for fecha, qtd, cont in grupos_prod[(grupo, nombre, unidade)]:
-                acc[(fecha, cont)] = acc.get((fecha, cont), 0) + qtd
+            for f, q, c in grupos_prod[(grupo, nombre, unidade)]:
+                acc[(f, c)] = acc.get((f, c), 0) + q
 
             def _sort_lote(item):
-                (f, c), q = item
+                (f, c), _q = item
                 f2 = f or date.max
                 return (0 if f is not None else 1, f2, c)
 
-            for (fecha, cont), qtd in sorted(acc.items(), key=_sort_lote):
-                suf_un = f" {unidade}" if unidade else ""
-                ft = _fmt_fecha(fecha)
-                if grupo == "CON" and cont:
-                    # Mostrar contêiner por lote si es Congelados
-                    mensaje += f"• {qtd}{suf_un} – ({cont}) – ({ft})\n"
+            for (f, c), q in sorted(acc.items(), key=_sort_lote):
+                su = f" {unidade}" if unidade else ""
+                ft = _fmt_fecha(f)
+                if grupo == "CON" and c:
+                    mensaje += f"• {q}{su} – ({c}) – ({ft})\n"
                 else:
-                    mensaje += f"• {qtd}{suf_un} – ({ft})\n"
+                    mensaje += f"• {q}{su} – ({ft})\n"
 
             mensaje += "\n"
 
