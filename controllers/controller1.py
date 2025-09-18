@@ -599,7 +599,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Buscar por produto (texto livre)
     else:
-        resultados = obterner_stock_actual(nombre=query.lower())  # si tu función se llama "obtener_", deja igual
+        resultados = obtener_stock_actual(nombre=query.lower())  # si tu función se llama "obtener_", deja igual
         # ^^^ ojo con el nombre: usa exactamente tu función real (probablemente "obtener_stock_actual")
 
         if not resultados:
