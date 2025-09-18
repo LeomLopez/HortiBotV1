@@ -4,6 +4,7 @@ from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos
 from datetime import datetime, date
 from textwrap import shorten
+from views.formatters import mensaje_por_nombre_from_tuples
 
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
@@ -433,17 +434,15 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ESTOQUE SECOS
 # ------------------------
 async def estoque_secos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultados = obtener_stock_actual(grupo="SEC")
+    resultados = obtener_stock_actual(grupo="SEC")  # [(nombre, cantidad, unidad, grupo, fecha, contenedor), ...]
 
     if not resultados:
         await update.message.reply_text("📦 Nenhum item registrado no Estoque Seco.")
         return
 
-    mensagem = "📦 *Estoque – Secos*\n"
-    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
-
+    mensagem = mensaje_por_nombre_from_tuples(resultados, titulo_grupo="Secos")
     await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 # ------------------------
 # ESTOQUE QUÍMICOS
