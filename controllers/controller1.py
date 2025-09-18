@@ -434,13 +434,43 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ESTOQUE SECOS
 # ------------------------
 async def estoque_secos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultados = obtener_stock_actual(grupo="SEC")  # [(nombre, cantidad, unidad, grupo, fecha, contenedor), ...]
+    # Trae tu lista de tuplas: (nombre, cantidad, unidad, grupo, fecha_producto, contenedor)
+    resultados = obtener_stock_actual(grupo="SEC")
 
     if not resultados:
         await update.message.reply_text("📦 Nenhum item registrado no Estoque Seco.")
         return
 
-    mensagem = mensaje_por_nombre_from_tuples(resultados, titulo_grupo="Secos")
+    # --- Agrupar por (nombre, unidad) y consolidar lotes por fecha ---
+    # acc[(nombre, unidad, fecha)] = suma_cantidades
+    acc = {}
+    for nombre, cantidad, unidad, _grupo, fecha_producto, _ in resultados:
+        nombre = (nombre or "").strip()
+        unidad = (unidad or "").strip()
+        fecha = _only_date(fecha_producto)
+        cant = int(cantidad or 0)
+        key = (nombre, unidad, fecha)
+        acc[key] = acc.get(key, 0) + cant
+
+    # grupos[(nombre, unidad)] = [(fecha, cantidad_sumada), ...]
+    grupos = {}
+    for (nombre, unidad, fecha), cant in acc.items():
+        grupos.setdefault((nombre, unidad), []).append((fecha, cant))
+
+    # Orden: productos por nombre (A-Z); lotes por fecha asc (None al final)
+    def sort_lote(item):
+        fecha, _ = item
+        return (0 if fecha is not None else 1, fecha or date.max)
+
+    linhas = ["📦 *Estoque – Secos*"]
+    for (nombre, unidad) in sorted(grupos.keys(), key=lambda k: k[0].lower()):
+        linhas.append(f"{nombre}")
+        for fecha, cant in sorted(grupos[(nombre, unidad)], key=sort_lote):
+            suf = f" {unidad}" if unidad else ""
+            linhas.append(f"• {cant}{suf} – ({_fmt_fecha(fecha)})")
+        linhas.append("")  # línea en blanco entre productos
+
+    mensagem = "\n".join(linhas).rstrip()
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
 
