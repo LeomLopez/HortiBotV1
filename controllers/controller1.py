@@ -4,7 +4,7 @@ from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos
 from datetime import datetime, date
 from textwrap import shorten
-from views.formatters import mensaje_por_nombre_from_tuples
+from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha
 
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
