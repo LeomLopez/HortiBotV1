@@ -597,24 +597,51 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(mensaje, parse_mode="Markdown")
         return
 
-    # Buscar por produto (texto livre)
+        # Buscar por produto (texto livre)
     else:
-        resultados = obtener_stock_actual(nombre=query.lower())  # si tu función se llama "obtener_", deja igual
-        # ^^^ ojo con el nombre: usa exactamente tu función real (probablemente "obtener_stock_actual")
+        resultados = obtener_stock_actual(nombre=query.lower())
 
         if not resultados:
             await update.message.reply_text(f"📦 Não foi encontrado estoque para '{query}'.")
             return
 
-        mensaje = f"*Resultados para '{query}':*\n"
+        # Agrupar por (grupo, nombre, unidade) y consolidar lotes por (fecha, contêiner)
+        grupos_prod = {}
         for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
-            grupo_nombre = GRUPOS_MAP.get(grupo, grupo)
-            if grupo == "CON":
-                mensaje += f"• {quantidade}{unidade} – {grupo_nombre} ({contenedor}) – {fecha.strftime('%d/%m')}\n"
-            else:
-                mensaje += f"• {quantidade}{unidade} – {grupo_nombre} – {fecha.strftime('%d/%m')}\n"
+            key = (grupo, (nombre or "").strip(), (unidade or "").strip())
+            grupos_prod.setdefault(key, []).append((_only_date(fecha), int(quantidade or 0), contenedor or ""))
 
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        # Mensaje
+        mensaje = f"*Resultados para '{query}':*\n"
+
+        # Ordenar productos por nombre (A-Z) y luego por grupo
+        for (grupo, nombre, unidade) in sorted(grupos_prod.keys(), key=lambda k: (k[1].lower(), k[0])):
+            grupo_nombre = GRUPOS_MAP.get(grupo, grupo)
+            mensaje += f"[{grupo_nombre}] {nombre}\n"
+
+            # Consolidar lotes repetidos por (fecha, contêiner) y ordenarlos por fecha asc (None al final)
+            acc = {}
+            for fecha, qtd, cont in grupos_prod[(grupo, nombre, unidade)]:
+                acc[(fecha, cont)] = acc.get((fecha, cont), 0) + qtd
+
+            def _sort_lote(item):
+                (f, c), q = item
+                f2 = f or date.max
+                return (0 if f is not None else 1, f2, c)
+
+            for (fecha, cont), qtd in sorted(acc.items(), key=_sort_lote):
+                suf_un = f" {unidade}" if unidade else ""
+                ft = _fmt_fecha(fecha)
+                if grupo == "CON" and cont:
+                    # Mostrar contêiner por lote si es Congelados
+                    mensaje += f"• {qtd}{suf_un} – ({cont}) – ({ft})\n"
+                else:
+                    mensaje += f"• {qtd}{suf_un} – ({ft})\n"
+
+            mensaje += "\n"
+
+        await update.message.reply_text(mensaje.rstrip(), parse_mode="Markdown")
+
 
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
