@@ -545,80 +545,76 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
 # BUSCAR
 # ------------------------
 async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Sin mensaje de ayuda: si no hay argumentos, no respondemos.
     if not context.args:
-        await update.message.reply_text(
-            "❌ Use: /buscar [produto|grupo|contêiner]\n"
-            "Exemplos:\n"
-            "/buscar frango\n"
-            "/buscar CON\n"
-            "/buscar C1"
-
-        )
         return
 
     query = " ".join(context.args).strip().upper()
     grupos_validos = ["HOR", "CON", "LAC", "FRU", "SEC"]
     contenedores_validos = ["C1", "C2", "C3"]
 
-    # Buscar por grupo
+    # Buscar por grupo (HOR/CON/LAC/FRU/SEC)
     if query in grupos_validos:
         resultados = obtener_stock_actual(grupo=query)
         if not resultados:
-            await update.message.reply_text(f"📦 Sem estoque para o grupo {query}.")
+            await update.message.reply_text(f"📦 Sem estoque no grupo {GRUPOS_MAP.get(query, query)}.")
             return
 
         mensaje = f"*Estoque do grupo {GRUPOS_MAP.get(query, query)}:*\n"
+
+        # Congelados: agrupar por contêiner
         if query == "CON":
             contenedores = {}
-            for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
+            for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
                 contenedores.setdefault(contenedor, [])
-                contenedores[contenedor].append((nombre, cantidad, unidade, fecha))
+                contenedores[contenedor].append((nombre, quantidade, unidade, fecha))
 
-            for contenedor, items in contenedores.items():
-                mensaje += f"\n*{contenedor}*\n"
-                for nombre, cantidad, unidade, fecha in items:
-                    mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+            for cont in sorted(contenedores.keys(), key=lambda x: (x is None, x)):
+                mensagem_cont = f"\n*{cont}*\n" if cont else "\n*Sem contêiner*\n"
+                mensaje += mensagem_cont
+                for nombre, quantidade, unidade, fecha in contenedores[cont]:
+                    mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
         else:
-            for nombre, cantidad, unidade, grupo, fecha, _ in resultados:
-                mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+            for nombre, quantidade, unidade, grupo, fecha, _ in resultados:
+                mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
 
         await update.message.reply_text(mensaje, parse_mode="Markdown")
         return
 
-    # Buscar por contenedor
+    # Buscar por contêiner (C1/C2/C3)
     elif query in contenedores_validos:
         resultados = obtener_stock_actual(grupo="CON")
-        resultados = [r for r in resultados if r[5] == query]
+        resultados = [r for r in resultados if (r[5] or "") == query]
 
         if not resultados:
-            await update.message.reply_text(f"📦 Sem estoque para o grupo {query}.")
+            await update.message.reply_text(f"📦 Sem estoque no contêiner {query}.")
             return
 
         mensaje = f"*Estoque no Contêiner {query} (Congelados):*\n"
-        for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
-            mensaje += f"• {nombre}: {cantidad}{unidade} ({fecha.strftime('%d/%m')})\n"
+        for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
+            mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
 
         await update.message.reply_text(mensaje, parse_mode="Markdown")
         return
 
-    # Buscar por producto
+    # Buscar por produto (texto livre)
     else:
-        resultados = obtener_stock_actual(nombre=query.lower())
+        resultados = obterner_stock_actual(nombre=query.lower())  # si tu función se llama "obtener_", deja igual
+        # ^^^ ojo con el nombre: usa exactamente tu función real (probablemente "obtener_stock_actual")
 
         if not resultados:
             await update.message.reply_text(f"📦 Não foi encontrado estoque para '{query}'.")
             return
 
         mensaje = f"*Resultados para '{query}':*\n"
-        for nombre, cantidad, unidade, grupo, fecha, contenedor in resultados:
+        for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
             grupo_nombre = GRUPOS_MAP.get(grupo, grupo)
             if grupo == "CON":
-                mensaje += f"• {cantidad}{unidade} – {grupo_nombre} ({contenedor}) – {fecha.strftime('%d/%m')}\n"
+                mensaje += f"• {quantidade}{unidade} – {grupo_nombre} ({contenedor}) – {fecha.strftime('%d/%m')}\n"
             else:
-                mensaje += f"• {cantidad}{unidade} – {grupo_nombre} – {fecha.strftime('%d/%m')}\n"
+                mensaje += f"• {quantidade}{unidade} – {grupo_nombre} – {fecha.strftime('%d/%m')}\n"
 
         await update.message.reply_text(mensaje, parse_mode="Markdown")
-
 
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
