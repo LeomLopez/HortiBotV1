@@ -1,8 +1,10 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos
 from datetime import datetime, date
+from textwrap import shorten
+
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
 GRUPOS_MAP = {
@@ -120,6 +122,43 @@ def mover_para_descarte(produtos):
     for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
         if tipo == "entrada" and (data - hoje).days == -1:
             insertar_producto(nome, quantidade, 'descarte', data, unidade, grupo)
+            
+
+def handle_buscar(update, context, conn):
+    args = context.args
+    query = " ".join(args).strip() if args else ""
+    if not query:
+        update.message.reply_text("Dime qué buscas. Ej: /buscar batata")
+        return
+
+    # Si en el futuro quieres permitir filtrar por grupo en el mismo comando,
+    # puedes parsear algo tipo: "/buscar batata g:secos"
+    grupo = None
+    # Ejemplo de parseo básico (opcional):
+    # for a in list(args):
+    #     if a.lower().startswith("g:"):
+    #         grupo = a.split(":", 1)[1]
+    #         query = " ".join([x for x in args if x != a])
+
+    resultados = search_productos(conn, query=query, limit=60, grupo=grupo)
+
+    if not resultados:
+        update.message.reply_text(f"No encontré nada para “{query}”.")
+        return
+
+    lineas = []
+    for r in resultados:
+        nom = shorten(r["nombre"], width=38, placeholder="…")
+        grp = (r.get("grupo") or "-").upper()
+        stk = r.get("stock")
+        uni = r.get("unidad") or ""
+        ven = r.get("vencimiento")
+        ven_txt = f" • vence: {ven:%Y-%m-%d}" if ven else ""
+        lineas.append(f"• [{grp}] {nom} — {stk}{uni}{ven_txt}")
+
+    # Envía hasta 30 líneas por mensaje para no exceder límites
+    chunk = "\n".join(lineas[:30])
+    update.message.reply_text(chunk)
 
 # ------------------------
 # Comandos del Bot

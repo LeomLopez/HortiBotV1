@@ -185,3 +185,59 @@ def obtener_ultima_actualizacion(grupo=None):
     conn.close()
 
     return result
+
+
+# db.py
+def search_productos(conn, query, limit=50, grupo=None):
+    """
+    Busca por 1+ palabras en productos.nombre y devuelve producto + grupo (stock),
+    ordenado por similaridad. Si 'grupo' viene, filtra por ese grupo.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+
+    tokens = [t for t in q.split() if t]
+    where_parts = []
+    params = []
+
+    # Cada token debe aparecer en el nombre (AND)
+    for t in tokens:
+        where_parts.append("nombre_busqueda LIKE ('%' || unaccent(lower(%s)) || '%')")
+        params.append(t)
+
+    # (Opcional) filtro por grupo exacto si lo pasas (p. ej. 'secos')
+    if grupo:
+        where_parts.append("lower(grupo) = lower(%s)")
+        params.append(grupo)
+
+    where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
+
+    sql = f"""
+        SELECT id, nombre, grupo, stock, unidad, vencimiento
+        FROM productos
+        WHERE {where_sql}
+        ORDER BY similarity(nombre_busqueda, unaccent(lower(%s))) DESC,
+                 grupo ASC,
+                 nombre ASC
+        LIMIT %s;
+    """
+    params.append(q)
+    params.append(limit)
+
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+
+    # Mapeo a dicts
+    results = []
+    for r in rows:
+        results.append({
+            "id": r[0],
+            "nombre": r[1],
+            "grupo": r[2],        # ← aquí viene el “stock/grupo”
+            "stock": r[3],
+            "unidad": r[4],
+            "vencimiento": r[5],
+        })
+    return results
