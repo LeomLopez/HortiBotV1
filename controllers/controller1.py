@@ -553,6 +553,14 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
 async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Sin mensaje de ayuda: si no hay argumentos, no respondemos
     if not context.args:
+        await update.message.reply_text(
+            "❌ Use: /buscar [produto|grupo|contêiner]\n\n"
+            "*Exemplos:*\n"
+            "`/buscar frango`\n"
+            "`/buscar CON`\n"
+            "`/buscar C1`",
+            parse_mode="Markdown"
+        )
         return
 
     raw_query = " ".join(context.args).strip()   # texto tal cual (para mostrar)
