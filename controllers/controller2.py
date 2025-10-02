@@ -106,7 +106,7 @@ def parse_args(update: Update, requiere_fecha=False):
     except Exception:
         return (None,) * 5
 
-def calcular_estoque(nome, grupo, produtos):
+def calcular_estoque(nome, grupo, productos):
     """Calcula stock actual de un producto en un grupo a partir de la tabla movimientos."""
     estoque = 0
     for _, n, q, t, d, u, g, _ in productos:

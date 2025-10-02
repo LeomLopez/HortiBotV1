@@ -32,14 +32,6 @@ menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 # Funciones Auxiliares
 # ------------------------
 
-def _only_date(d):
-    if d is None: return None
-    if isinstance(d, datetime): return d.date()
-    return d
-
-def _fmt_fecha(d):
-    d = _only_date(d)
-    return d.strftime("%d/%m") if d else "—"
 
 def _norm(s: str) -> str:
     # lower + sin acentos
@@ -264,41 +256,39 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
-    # Validación básica
     if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
-            "*Não congelados (HOR/LAC/etc):*\n"
-            "`/saida 5 kg, tomate, 30/07, HOR`\n\n"
-            "*Congelados (CON):*\n"
-            "`/saida 3 kg, frango, 30/07, CON, C1`",
+            "*Uso correto:*\n"
+            "`/saida [quantidade] [unidade], [produto], [dd/mm], [grupo]`\n\n"
+            "*Exemplo:*\n"
+            "`/saida 5 kg, tomate, 30/07, HOR`",
             parse_mode="Markdown"
         )
         return
 
-    # Manejo de contenedor
+    # Validar stock antes de registrar la salida
+    stock_actual = obtener_stock_actual(nombre, grupo)
+    if stock_actual < cantidad:
+        await update.message.reply_text(
+            f"⚠️ *Estoque insuficiente para {nombre}!*\n\n"
+            f"• Estoque atual: {stock_actual}{unidad}\n"
+            f"• Saída solicitada: {cantidad}{unidad}",
+            parse_mode="Markdown"
+        )
+        return
+
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
         if len(partes) < 5:
             await update.message.reply_text(
-                "❌ Você deve indicar o contêiner (C1/C2/C3) para congelados.\n"
+                "❌ Indique o contêiner (C1/C2/C3) para congelados.\n"
                 "Exemplo: `/saida 3 kg, frango, 30/07, CON, C1`",
                 parse_mode="Markdown"
             )
             return
         contenedor = partes[4].strip().upper()
-
-    # Verificar stock actual antes de registrar salida
-    stock_actual = obtener_stock_actual(grupo=grupo, nombre=nombre)
-    cantidad_actual = sum([item[1] for item in stock_actual if item[5] == (contenedor or "N/A")])
-
-    if cantidad_actual < cantidad:
-        await update.message.reply_text(
-            f"❌ Estoque insuficiente. {nombre} disponible: {cantidad_actual} {unidad}. "
-            f"Tentativa de saída: {cantidad} {unidad}."
-        )
-        return
 
     try:
         insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
@@ -307,7 +297,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
         )
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Error en la saída: {e}")
+        await update.message.reply_text(f"⚠️ Erro na saída: {e}")
 
 
 
