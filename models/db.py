@@ -1,5 +1,6 @@
 import psycopg2
 from config.config import DATABASE_URL
+from datetime import datetime
 
 # ----------------------------
 # Conexión a la base de datos
