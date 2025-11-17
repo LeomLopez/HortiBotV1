@@ -162,6 +162,48 @@ def obtener_stock_actual(grupo=None, nombre=None):
 
     return resultado
 
+
+#Obtener producto especifico
+
+def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None):
+    """
+    Devuelve el lote actual en stock_actual para:
+    - nombre
+    - grupo
+    - fecha_producto
+    - (contenedor si es CON)
+
+    Retorna: (nombre, cantidad, unidade, grupo, fecha_producto, contenedor) o None
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    sql = """
+        SELECT nombre, cantidad, unidade, grupo, fecha_producto, contenedor
+        FROM stock_actual
+        WHERE nombre = %s
+          AND grupo = %s
+          AND fecha_producto = %s
+    """
+    params = [
+        (nombre or "").lower().strip(),
+        (grupo or "").upper().strip(),
+        fecha_producto,
+    ]
+
+    if grupo and grupo.upper().strip() == "CON":
+        sql += " AND contenedor = %s"
+        params.append((contenedor or "N/A").upper().strip())
+
+    cursor.execute(sql, params)
+    row = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return row  # None si ya no existe el lote
+
+
 def obtener_ultima_actualizacion(grupo=None):
     """
     Devuelve la fecha/hora de la última actualización del stock.
