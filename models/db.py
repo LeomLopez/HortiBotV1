@@ -129,7 +129,6 @@ def obtener_productos(nombre=None):
 
     return productos
 
-from datetime import datetime
 
 def obtener_stock_actual(grupo=None, nombre=None):
     """

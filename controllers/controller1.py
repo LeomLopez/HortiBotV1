@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha
@@ -211,6 +211,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------
 # ENTRADA
 # ------------------------
+# ------------------------
+# ENTRADA
+# ------------------------
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
@@ -226,7 +229,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Manejo de contenedor
+    # Manejo de contenedor para congelados
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
@@ -240,23 +243,48 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         contenedor = partes[4].strip().upper()
 
     try:
+        # Registrar movimento
         insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor)
+
+        # Buscar lote atualizado em stock_actual
+        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        if lote:
+            _, q_restante, un_restante, _, _, cont = lote
+            extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
+            msg_estoque = (
+                f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
+                f"({fecha_producto.strftime('%d/%m')})."
+            )
+        else:
+            # Lote no encontrado (caso raro em entrada, mas deixamos consistente)
+            msg_estoque = (
+                f"📊 Não foi possível localizar o lote em estoque, "
+                f"mas a entrada foi registrada."
+            )
+
         await update.message.reply_text(
             f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
+            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"{msg_estoque}",
+            parse_mode="Markdown"
         )
+
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na entrada: {e}")
+
 
 
 
 # ------------------------
 # SAIDA
 # ------------------------
+# ------------------------
+# SAIDA
+# ------------------------
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
+    nombre, quantidade, unidade, data_produto, grupo = parse_args(update, requiere_fecha=True)
 
-    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
+    if not all([nombre, quantidade, unidade, data_produto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
             "*Uso correto:*\n"
@@ -267,17 +295,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Validar stock antes de registrar la salida
-    stock_actual = obtener_stock_actual(nombre, grupo)
-    if stock_actual < cantidad:
-        await update.message.reply_text(
-            f"⚠️ *Estoque insuficiente para {nombre}!*\n\n"
-            f"• Estoque atual: {stock_actual}{unidad}\n"
-            f"• Saída solicitada: {cantidad}{unidad}",
-            parse_mode="Markdown"
-        )
-        return
-
+    # Contêiner para congelados
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
@@ -291,13 +309,42 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         contenedor = partes[4].strip().upper()
 
     try:
-        insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
-        await update.message.reply_text(
-            f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
-        )
+        # 1️⃣ Verificar estoque do LOTE específico antes de registrar saída
+        lote_atual = obtener_lote_stock_actual(nombre, grupo, data_produto, contenedor)
+        estoque_atual = lote_atual[1] if lote_atual else 0
+
+        if estoque_atual < quantidade:
+            await update.message.reply_text(
+                f"⚠️ *Estoque insuficiente para {nombre} ({data_produto.strftime('%d/%m')}).*\n\n"
+                f"• Estoque do lote: {estoque_atual}{unidade}\n"
+                f"• Saída solicitada: {quantidade}{unidade}",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 2️⃣ Registrar a saída
+        insertar_producto(nombre, quantidade, 'saida', data_produto, unidade, grupo, contenedor)
+
+        # 3️⃣ Buscar lote atualizado
+        lote = obtener_lote_stock_actual(nombre, grupo, data_produto, contenedor)
+        if lote:
+            _, q_restante, un_restante, _, _, cont = lote
+            extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
+            msg = (
+                f"Resta {q_restante}{un_restante} {nombre}{extra} "
+                f"({data_produto.strftime('%d/%m')})"
+            )
+        else:
+            # Se não há mais registro, o lote foi completamente esgotado
+            msg = (
+                f"Resta 0{unidade} {nombre} ({data_produto.strftime('%d/%m')}) – lote esgotado."
+            )
+
+        await update.message.reply_text(msg)
+
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na saída: {e}")
+
 
 
 
