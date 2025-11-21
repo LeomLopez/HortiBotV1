@@ -78,9 +78,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     # 1. Movimientos: Consolidar por clave única
     cursor.execute("""
         INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (nombre, tipo, fecha_producto, unidade, grupo, contenedor)
-        DO UPDATE SET cantidad = movimientos.cantidad + EXCLUDED.cantidad;
+        VALUES (%s, %s, %s, %s, %s, %s, %s);
     """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
 
     # 2. Stock actual: Actualizar y limpiar si cantidad <= 0

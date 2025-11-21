@@ -211,9 +211,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------
 # ENTRADA
 # ------------------------
-# ------------------------
-# ENTRADA
-# ------------------------
 async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
@@ -273,18 +270,14 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Erro na entrada: {e}")
 
 
-
-
-# ------------------------
-# SAIDA
-# ------------------------
 # ------------------------
 # SAIDA
 # ------------------------
 async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nombre, quantidade, unidade, data_produto, grupo = parse_args(update, requiere_fecha=True)
+    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
 
-    if not all([nombre, quantidade, unidade, data_produto, grupo]):
+    # Validación básica
+    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
             "*Uso correto:*\n"
@@ -295,7 +288,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Contêiner para congelados
+    # Manejo de contenedor para congelados
     contenedor = None
     if grupo == "CON":
         partes = update.message.text.split(',')
@@ -308,46 +301,49 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         contenedor = partes[4].strip().upper()
 
+    # 🔹 Consultar el lote actual en stock_actual (antes de la salida)
+    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+    estoque_lote = int(lote[1]) if lote and lote[1] is not None else 0  # lote[1] = cantidad
+
+    if estoque_lote < cantidad:
+        await update.message.reply_text(
+            f"⚠️ *Estoque insuficiente para {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
+            f"• Estoque do lote: {estoque_lote}{unidad}\n"
+            f"• Saída solicitada: {cantidad}{unidad}",
+            parse_mode="Markdown"
+        )
+        return
+
     try:
-        # 1️⃣ Verificar estoque do LOTE específico antes de registrar saída
-        lote_atual = obtener_lote_stock_actual(nombre, grupo, data_produto, contenedor)
-        estoque_atual = lote_atual[1] if lote_atual else 0
+        # 1️⃣ Registrar movimento de saída
+        insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
 
-        if estoque_atual < quantidade:
-            await update.message.reply_text(
-                f"⚠️ *Estoque insuficiente para {nombre} ({data_produto.strftime('%d/%m')}).*\n\n"
-                f"• Estoque do lote: {estoque_atual}{unidade}\n"
-                f"• Saída solicitada: {quantidade}{unidade}",
-                parse_mode="Markdown"
-            )
-            return
-
-        # 2️⃣ Registrar a saída
-        insertar_producto(nombre, quantidade, 'saida', data_produto, unidade, grupo, contenedor)
-
-        # 3️⃣ Buscar lote atualizado
-        lote = obtener_lote_stock_actual(nombre, grupo, data_produto, contenedor)
-        if lote:
-            _, q_restante, un_restante, _, _, cont = lote
+        # 2️⃣ Volver a consultar el lote después de la salida
+        lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        if lote_restante:
+            _, q_restante, un_restante, _, _, cont = lote_restante
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
-            msg = (
-                f"Resta {q_restante}{un_restante} {nombre}{extra} "
-                f"({data_produto.strftime('%d/%m')})"
+            msg_estoque = (
+                f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
+                f"({fecha_producto.strftime('%d/%m')})."
             )
         else:
-            # Se não há mais registro, o lote foi completamente esgotado
-            msg = (
-                f"Resta 0{unidade} {nombre} ({data_produto.strftime('%d/%m')}) – lote esgotado."
+            # Si el lote se fue a 0 y fue borrado de stock_actual
+            msg_estoque = (
+                f"📊 O lote de {nombre} ({fecha_producto.strftime('%d/%m')}) "
+                f"foi zerado no estoque."
             )
 
-        await update.message.reply_text(msg)
+        # 3️⃣ Mensaje en el mismo formato que entrada
+        await update.message.reply_text(
+            f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
+            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"{msg_estoque}",
+            parse_mode="Markdown"
+        )
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na saída: {e}")
-
-
-
-
 
 # ------------------------
 # DESCARTE (manual)
