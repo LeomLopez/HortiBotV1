@@ -313,6 +313,31 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return
+    
+        # asumiendo estrutura: (nombre, cantidad, unidade, grupo, fecha_producto, contenedor)
+    estoque_lote = int(lote[1]) if lote[1] is not None else 0
+    unidade_lote = (lote[2] or "").lower()
+
+    # ✅ VALIDACIÓN DE UNIDADE
+    if unidad.lower() != unidade_lote:
+        await update.message.reply_text(
+            "❌ Unidade diferente da cadastrada para esse lote.\n\n"
+            f"• Unidade do lote: *{unidade_lote}*\n"
+            f"• Unidade informada: *{unidad.lower()}*\n\n"
+            "Use a mesma unidade do estoque para registrar a saída.",
+            parse_mode="Markdown"
+        )
+        return
+
+    # ✅ Validación de cantidad
+    if estoque_lote < cantidad:
+        await update.message.reply_text(
+            f"⚠️ *Estoque insuficiente para {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
+            f"• Estoque do lote: {estoque_lote}{unidad}\n"
+            f"• Saída solicitada: {cantidad}{unidad}",
+            parse_mode="Markdown"
+        )
+        return
 
     try:
         # 1️⃣ Registrar movimento de saída
