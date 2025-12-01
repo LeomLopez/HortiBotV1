@@ -396,7 +396,7 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     produtos = obtener_productos()
     hoje = datetime.now().date()
 
-    mover_para_descarte(produtos)  # Descarta automáticamente
+    #mover_para_descarte(produtos)  # Descarta automáticamente
 
     alerta_proximos = []
     alerta_hoy = []
