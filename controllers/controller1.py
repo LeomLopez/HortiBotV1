@@ -262,8 +262,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
-            f"{msg_estoque}",
-            parse_mode="Markdown"
+            f"{msg_estoque}"
         )
 
     except Exception as e:
