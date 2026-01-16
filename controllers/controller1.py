@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha
@@ -126,12 +126,13 @@ def calcular_estoque(nome, grupo, produtos):
                 estoque -= q
     return estoque
 
-def mover_para_descarte(produtos):
+# DESATIVADO: não usar descarte automático (decisão de processo)
+"""def mover_para_descarte(produtos):
     hoje = datetime.now().date()
     for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
         if tipo == "entrada" and (data - hoje).days == -1:
             insertar_producto(nome, quantidade, 'descarte', data, unidade, grupo)
-            
+    return """
 
 def handle_buscar(update, context, conn):
     args = context.args
@@ -168,6 +169,42 @@ def handle_buscar(update, context, conn):
     # Envía hasta 30 líneas por mensaje para no exceder límites
     chunk = "\n".join(lineas[:30])
     update.message.reply_text(chunk)
+
+
+def _aviso_vencido(fecha_produto):
+    hoje = datetime.now().date()
+    if fecha_produto and fecha_produto < hoje:
+        dias = (hoje - fecha_produto).days
+        return (
+            "\n\n⚠️ *ATENÇÃO: PRODUTO VENCIDO*\n"
+            f"• Vencido há {dias} dia(s)\n"
+            "Confira se a data está correta antes de guardar."
+        )
+    return ""
+
+#Divide mensaje
+MAX_TG = 3900  # margen de seguridad (<4096)
+
+async def _send_long(update: Update, text: str, parse_mode=None):
+    """
+    Envía mensajes largos en partes, cortando por líneas.
+    """
+    if not text:
+        return
+
+    lines = text.split("\n")
+    chunk = ""
+
+    for line in lines:
+        # +1 por el salto de línea
+        if len(chunk) + len(line) + 1 > MAX_TG:
+            await update.message.reply_text(chunk, parse_mode=parse_mode)
+            chunk = line
+        else:
+            chunk = chunk + ("\n" if chunk else "") + line
+
+    if chunk:
+        await update.message.reply_text(chunk, parse_mode=parse_mode)
 
 # ------------------------
 # Comandos del Bot
@@ -239,6 +276,9 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         contenedor = partes[4].strip().upper()
 
+    # ✅ Aviso si está vencido (NO bloquea)
+    aviso_vencido = _aviso_vencido(fecha_producto)
+
     try:
         # Registrar movimento
         insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor)
@@ -253,20 +293,22 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"({fecha_producto.strftime('%d/%m')})."
             )
         else:
-            # Lote no encontrado (caso raro em entrada, mas deixamos consistente)
             msg_estoque = (
-                f"📊 Não foi possível localizar o lote em estoque, "
-                f"mas a entrada foi registrada."
+                "📊 Não foi possível localizar o lote em estoque, "
+                "mas a entrada foi registrada."
             )
 
         await update.message.reply_text(
             f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
             f"{msg_estoque}"
+            f"{aviso_vencido}",
+            parse_mode="Markdown"
         )
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na entrada: {e}")
+
 
 
 # ------------------------
@@ -300,40 +342,31 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         contenedor = partes[4].strip().upper()
 
+    # ✅ Aviso si está vencido (NO bloquea)
+    aviso_vencido = _aviso_vencido(fecha_producto)
+
     # 🔹 Consultar el lote actual en stock_actual (antes de la salida)
     lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
-    estoque_lote = int(lote[1]) if lote and lote[1] is not None else 0  # lote[1] = cantidad
+    estoque_lote = int(lote[1]) if lote and lote[1] is not None else 0
+    unidade_lote = (lote[2] or "").lower() if lote else ""
 
+    # ✅ Validación de existencia y cantidad
     if estoque_lote < cantidad:
         await update.message.reply_text(
             f"⚠️ *Estoque insuficiente para {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
-            f"• Estoque do lote: {estoque_lote}{unidad}\n"
+            f"• Estoque do lote: {estoque_lote}{unidade_lote or unidad}\n"
             f"• Saída solicitada: {cantidad}{unidad}",
             parse_mode="Markdown"
         )
         return
-    
-        # asumiendo estrutura: (nombre, cantidad, unidade, grupo, fecha_producto, contenedor)
-    estoque_lote = int(lote[1]) if lote[1] is not None else 0
-    unidade_lote = (lote[2] or "").lower()
 
-    # ✅ VALIDACIÓN DE UNIDADE
-    if unidad.lower() != unidade_lote:
+    # ✅ VALIDACIÓN DE UNIDADE (si tenemos unidad del lote)
+    if unidade_lote and unidad.lower() != unidade_lote:
         await update.message.reply_text(
             "❌ Unidade diferente da cadastrada para esse lote.\n\n"
             f"• Unidade do lote: *{unidade_lote}*\n"
             f"• Unidade informada: *{unidad.lower()}*\n\n"
             "Use a mesma unidade do estoque para registrar a saída.",
-            parse_mode="Markdown"
-        )
-        return
-
-    # ✅ Validación de cantidad
-    if estoque_lote < cantidad:
-        await update.message.reply_text(
-            f"⚠️ *Estoque insuficiente para {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
-            f"• Estoque do lote: {estoque_lote}{unidad}\n"
-            f"• Saída solicitada: {cantidad}{unidad}",
             parse_mode="Markdown"
         )
         return
@@ -352,22 +385,23 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"({fecha_producto.strftime('%d/%m')})."
             )
         else:
-            # Si el lote se fue a 0 y fue borrado de stock_actual
             msg_estoque = (
                 f"📊 O lote de {nombre} ({fecha_producto.strftime('%d/%m')}) "
                 f"foi zerado no estoque."
             )
 
-        # 3️⃣ Mensaje en el mismo formato que entrada
+        # 3️⃣ Mensaje final (con aviso de vencido)
         await update.message.reply_text(
             f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
-            f"{msg_estoque}",
+            f"{msg_estoque}"
+            f"{aviso_vencido}",
             parse_mode="Markdown"
         )
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na saída: {e}")
+
 
 # ------------------------
 # DESCARTE (manual)
@@ -388,6 +422,37 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🗑️ Descarte registrado: {quantidade}{unidade} de {nome} "
         f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
     )
+    
+#Comando Descarte Vencidos
+async def descarte_vencidos(update, context):
+    grupo = context.args[0].upper() if context.args else None
+
+    vencidos = obtener_stock_vencido(grupo=grupo)
+
+    if not vencidos:
+        await update.message.reply_text(
+            "✅ Não há itens vencidos com quantidade em estoque."
+        )
+        return
+
+    mensagem = "⚠️ *Itens vencidos no estoque:*\n\n"
+
+    for nome, quantidade, unidade, grupo, fecha, contenedor in vencidos:
+        extra = f" – ({contenedor})" if grupo == "CON" and contenedor and contenedor != "N/A" else ""
+        dias = (datetime.now().date() - fecha).days
+
+        mensagem += (
+            f"• {nome}: {quantidade}{unidade}{extra}\n"
+            f"  📅 Vencido há {dias} dia(s) ({fecha.strftime('%d/%m')})\n\n"
+        )
+
+    mensagem += (
+        "⚠️ *Este comando ainda NÃO realiza o descarte.*\n"
+        "Use apenas para conferência."
+    )
+
+    await update.message.reply_text(mensagem, parse_mode="Markdown")
+
 
 # ------------------------
 # VENCIMIENTOS
