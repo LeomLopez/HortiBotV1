@@ -626,7 +626,6 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/buscar frango`\n"
             "`/buscar CON`\n"
             "`/buscar C1`",
-            parse_mode="Markdown"
         )
         return
 
