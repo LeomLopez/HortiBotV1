@@ -519,7 +519,7 @@ async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for nome, quantidade, unidade, fecha_producto in items:
             mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 # ------------------------
 # ESTOQUE CONGELADOS
@@ -565,7 +565,7 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
             for nome, quantidade, unidade, fecha_producto, contenedor in alerta_proximos:
                 mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
     
 
 # ------------------------
@@ -609,7 +609,7 @@ async def estoque_secos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         linhas.append("")  # línea en blanco entre productos
 
     mensagem = "\n".join(linhas).rstrip()
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 
 # ------------------------
@@ -626,7 +626,7 @@ async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
         mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 
 # ------------------------
@@ -643,7 +643,7 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
     for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
         mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 # ------------------------
 # ESTOQUE QUÍMICOS
@@ -659,7 +659,7 @@ async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
         mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 
 # ------------------------
@@ -676,7 +676,7 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
     for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
         mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
 
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await _send_long(update, mensagem, parse_mode="Markdown")
 
 
 # ------------------------
@@ -724,7 +724,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for nombre, quantidade, unidade, grupo, fecha, _ in resultados:
                 mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
 
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        await _send_long(update, mensaje, parse_mode="Markdown")
         return
 
     # --- Buscar por CONTÊINER ---
@@ -740,7 +740,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
             mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
 
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        await _send_long(update, mensaje, parse_mode="Markdown")
         return
 
     # --- Buscar por PRODUTO (texto livre, 1+ palavras, sem acentos) ---
@@ -794,7 +794,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             mensaje += "\n"
 
-        await update.message.reply_text(mensaje.rstrip(), parse_mode="Markdown")
+        await _send_long(update, mensaje.rstrip(), parse_mode="Markdown")
 
 
 async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -841,7 +841,7 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"– Produto: {fecha_producto.strftime('%d/%m')} – {fecha_mov.strftime('%H:%M')}\n"
             )
 
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        await _send_long(update, mensaje, parse_mode="Markdown")       
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao buscar movimentos: {str(e)}")
