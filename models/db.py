@@ -96,6 +96,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     conn.close()
     print(f"✅ Producto '{nombre}' ({tipo}) registrado con éxito.")
 
+
 # ----------------------------
 # Obtener productos
 # ----------------------------
@@ -131,8 +132,8 @@ def obtener_productos(nombre=None):
 
 def obtener_stock_actual(grupo=None, nombre=None):
     """
-    Devuelve el stock actual filtrado por grupo o nombre,
-    ignorando productos vencidos.
+    Devuelve el stock actual filtrado por grupo o nombre.
+    Incluye productos vencidos (no filtra por fecha).
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -140,9 +141,9 @@ def obtener_stock_actual(grupo=None, nombre=None):
     query = """
         SELECT nombre, cantidad, unidade, grupo, fecha_producto, contenedor
         FROM stock_actual
-        WHERE cantidad > 0 AND fecha_producto >= %s
+        WHERE cantidad > 0
     """
-    params = [datetime.now().date()]
+    params = []
 
     if grupo:
         query += " AND grupo = %s"
@@ -162,8 +163,38 @@ def obtener_stock_actual(grupo=None, nombre=None):
     return resultado
 
 
-#Obtener producto especifico
+def obtener_stock_vencido(grupo=None):
+    """
+    Devuelve productos vencidos que aún tienen cantidad en stock_actual.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
+    query = """
+        SELECT nombre, cantidad, unidade, grupo, fecha_producto, contenedor
+        FROM stock_actual
+        WHERE cantidad > 0
+        AND fecha_producto < %s
+    """
+    params = [datetime.now().date()]
+
+    if grupo:
+        query += " AND grupo = %s"
+        params.append(grupo.upper())
+
+    query += " ORDER BY grupo, fecha_producto"
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return rows
+
+
+
+# Obtener producto especifico
 def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None):
     """
     Devuelve el lote actual en stock_actual para:
