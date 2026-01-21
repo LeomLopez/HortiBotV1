@@ -404,6 +404,86 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ------------------------
+# AJUSTE
+# ------------------------
+
+async def ajuste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Parseo igual a /saida
+    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
+    
+    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "*Não congelados:*\n"
+            "`/ajuste 20 kg, tomate, 30/07, HOR`\n\n"
+            "*Congelados:*\n"
+            "`/ajuste 10 kg, frango, 30/07, CON, C1`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # 2️⃣ Contenedor (solo CON)
+    contenedor = None
+    if grupo == "CON":
+        partes = update.message.text.split(',')
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Indique o contêiner (C1/C2/C3).\n"
+                "Exemplo: `/ajuste 10 kg, frango, 30/07, CON, C1`",
+                parse_mode="Markdown"
+            )
+            return
+        contenedor = partes[4].strip().upper()
+
+    # 3️⃣ Buscar lote exacto en stock_actual
+    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+
+    if not lote:
+        await update.message.reply_text(
+            "❌ Nenhum lote encontrado para ajuste\n"
+            "Verifique nome, data e grupo."
+        )
+        return
+
+    # lote = (nombre, cantidad, unidade, grupo, fecha_producto, contenedor)
+    _, cantidad_lote, unidad_lote, _, _, _ = lote
+
+    # 4️⃣ Validación de unidad
+    if unidad.lower() != (unidad_lote or "").lower():
+        await update.message.reply_text(
+            "❌ Unidade diferente da cadastrada para esse lote."
+        )
+        return
+
+    # 5️⃣ Regla NO negociable: ajuste SOLO TOTAL
+    if int(cantidad_lote) != int(cantidad):
+        await update.message.reply_text(
+            "❌ Ajuste não permitido\n"
+            "A quantidade deve ser exatamente a do lote."
+        )
+        return
+
+    try:
+        # 6️⃣ Registrar movimiento de AJUSTE
+        insertar_producto(
+            nombre=nombre,
+            cantidad=cantidad,
+            tipo="ajuste",
+            fecha_producto=fecha_producto,
+            unidade=unidad,
+            grupo=grupo,
+            contenedor=contenedor
+        )
+
+        await update.message.reply_text(
+            "🛠️ Ajuste realizado com sucesso\n"
+            "O lote foi removido do estoque."
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Erro no ajuste: {e}")
+
+# ------------------------
 # DESCARTE (manual)
 # ------------------------
 async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
