@@ -4,7 +4,7 @@ from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido
 from datetime import datetime, date
 from textwrap import shorten
-from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha
+from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha, mensaje_por_fecha_from_tuples, mensaje_order_from_tuples
 import unicodedata
 
 
@@ -27,6 +27,18 @@ keyboard = [
     ["🧻 Estoque Descartáveis", "📋 Requisições"]
 ]
 menu_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def _estoque_help_short():
+    return (
+        "Uso:\n"
+        "• /estoque <SETOR>\n"
+        "• /estoque <SETOR> fifo\n"
+        "• /estoque <SETOR> order\n\n"
+        "Exemplos:\n"
+        "• /estoque hor\n"
+        "• /estoque sec order\n"
+        "• /estoque con fifo"
+    )
 
 # ------------------------
 # Funciones Auxiliares
@@ -523,7 +535,7 @@ async def descarte_vencidos(update, context):
 
         mensagem += (
             f"• {nome}: {quantidade}{unidade}{extra}\n"
-            f"  📅 Vencido há {dias} dia(s) ({fecha.strftime('%d/%m')})\n\n"
+            f"  📅 Vencido há {dias} dia(s) ({fecha.strftime('%d/%m')})\n"
         )
 
     mensagem += (
@@ -579,26 +591,34 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ESTOQUE
 # ------------------------
 async def estoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    produtos = obtener_stock_actual()  # Optimizado desde stock_actual
-    if not produtos:
-        await update.message.reply_text("📦 Nenhum item registrado no estoque.")
+    # 1) exigir setor
+    if not context.args:
+        await _send_long(update, _estoque_help_short())
         return
-
-    mensagem = "📦 *Estoque Atual:*\n"
-    grupos = {}
-
-    for nome, quantidade, unidade, grupo, fecha_producto, contenedor in produtos:
-        grupos.setdefault(grupo, [])
-        grupos[grupo].append((nome, quantidade, unidade, fecha_producto))
-
-    for grupo, items in grupos.items():
-        nome_grupo = GRUPOS_MAP.get(grupo, grupo)
-        mensagem += f"\n{nome_grupo}\n"
-
-        # Ya no se vuelve a ordenar: confiamos en el orden SQL
-        for nome, quantidade, unidade, fecha_producto in items:
-            mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
-
+    
+    setor = context.args[0].upper()
+    
+    # 2) vista default + parseo mínimo
+    
+    args_lower = [a.lower() for a in context.args[1:]]
+    vista = "order" if "order" in args_lower else "fifo"
+    
+    # 3) obtener stock actual del grupo/setor
+    
+    productos = obtener_stock_actual(grupo=setor)
+    if not productos:
+        await update.message.reply_text(f"📦 Nenhum item registrado no estoque para {setor}.")
+        return
+    
+    nome_grupo = GRUPOS_MAP.get(setor,setor)
+    
+    # 4) formatter
+    
+    if vista == "order":
+        mensagem = mensaje_order_from_tuples(productos, titulo_grupo=nome_grupo)
+    else:
+        mensagem = mensaje_por_fecha_from_tuples(productos, titulo_grupo=nome_grupo)
+    # 5) enviar
     await _send_long(update, mensagem, parse_mode="Markdown")
 
 # ------------------------
@@ -702,9 +722,10 @@ async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🧪 Nenhum item registrado no Estoque Químico.")
         return
 
-    mensagem = "🧪 *Estoque – Químicos*\n"
-    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+    mensagem = mensaje_order_from_tuples(
+        resultados,
+        titulo_grupo="🧪 Químicos"
+    )
 
     await _send_long(update, mensagem, parse_mode="Markdown")
 
@@ -719,42 +740,10 @@ async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("🧻 Nenhum item registrado no Estoque Descartáveis.")
         return
 
-    mensagem = "🧻 *Estoque – Descartáveis*\n"
-    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
-
-    await _send_long(update, mensagem, parse_mode="Markdown")
-
-# ------------------------
-# ESTOQUE QUÍMICOS
-# ------------------------
-async def estoque_quimicos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultados = obtener_stock_actual(grupo="QUI")
-
-    if not resultados:
-        await update.message.reply_text("🧪 Nenhum item registrado no Estoque Químico.")
-        return
-
-    mensagem = "🧪 *Estoque – Químicos*\n"
-    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
-
-    await _send_long(update, mensagem, parse_mode="Markdown")
-
-
-# ------------------------
-# ESTOQUE DESCARTÁVEIS
-# ------------------------
-async def estoque_descartaveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    resultados = obtener_stock_actual(grupo="DES")
-
-    if not resultados:
-        await update.message.reply_text("🧻 Nenhum item registrado no Estoque Descartáveis.")
-        return
-
-    mensagem = "🧻 *Estoque – Descartáveis*\n"
-    for nome, quantidade, unidade, grupo, fecha_producto, _ in resultados:
-        mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+    mensagem = mensaje_order_from_tuples(
+        resultados,
+        titulo_grupo="🧻 Descartáveis"
+    )
 
     await _send_long(update, mensagem, parse_mode="Markdown")
 
