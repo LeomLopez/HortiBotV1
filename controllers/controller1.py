@@ -19,6 +19,8 @@ GRUPOS_MAP = {
     "DES": "🧻 Descartáveis"     
 }
 
+AREAS_VALIDAS = {"alm": "Almoço", "jan": "Janta", "cof": "Coffee", "kit": "Kit Lanche"}
+
 
 # Teclado personalizado
 keyboard = [
@@ -241,10 +243,17 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 *➤ Saída de produtos*
 - HortiFruti / Laticínios / Outros:
-`/saida 5 kg, tomate, 29/07, HOR`
+`/saida 5 kg, tomate, 29/07, HOR, alm`
 
-- Congelados (com contêiner):
-`/saida 3 kg, frango, 30/07, CON, C1`
+- Congelados (com contêiner + área):
+`/saida 3 kg, frango, 30/07, CON, C1, alm`
+
+*➤ Volta de produção (retorno)*
+- HortiFruti / Laticínios / Outros:
+`/volta 2 kg, tomate, 30/07, HOR, alm`
+
+- Congelados (com contêiner + área):
+`/volta 2 kg, frango, 30/07, CON, C1, alm`
 
 *➤ Outros comandos*
 - `/estoque` → Ver estoque total  
@@ -293,7 +302,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Registrar movimento
-        insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor)
+        insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor, concepto="fornecedor")
 
         # Buscar lote atualizado em stock_actual
         lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
@@ -333,26 +342,58 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
-            "*Uso correto:*\n"
-            "`/saida [quantidade] [unidade], [produto], [dd/mm], [grupo]`\n\n"
-            "*Exemplo:*\n"
-            "`/saida 5 kg, tomate, 30/07, HOR`",
+            "*Uso correto (não congelados):*\n"
+            "`/saida 5 kg, tomate, 30/07, HOR, alm`\n\n"
+            "*Uso correto (congelados):*\n"
+            "`/saida 3 kg, frango, 30/07, CON, C1, alm`\n\n"
+            "Áreas válidas: alm, jan, cof, kit",
             parse_mode="Markdown"
         )
         return
 
-    # Manejo de contenedor para congelados
+    # Manejo de contenedor + captura de concepto (área)
+    partes = update.message.text.split(',')
+
     contenedor = None
+    concepto = None
+
     if grupo == "CON":
-        partes = update.message.text.split(',')
-        if len(partes) < 5:
+        # Esperado: /saida 3 kg, frango, 30/07, CON, C1, alm
+        if len(partes) < 6:
             await update.message.reply_text(
-                "❌ Indique o contêiner (C1/C2/C3) para congelados.\n"
-                "Exemplo: `/saida 3 kg, frango, 30/07, CON, C1`",
+                "❌ Formato inválido para congelados.\n\n"
+                "Use:\n"
+                "`/saida 3 kg, frango, 30/07, CON, C1, alm`\n\n"
+                "Áreas válidas: alm, jan, cof, kit",
                 parse_mode="Markdown"
             )
             return
+
         contenedor = partes[4].strip().upper()
+        concepto = partes[5].strip().lower()
+
+    else:
+        # Esperado: /saida 5 kg, tomate, 30/07, HOR, alm
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Formato inválido.\n\n"
+                "Use:\n"
+                "`/saida 5 kg, tomate, 30/07, HOR, alm`\n\n"
+                "Áreas válidas: alm, jan, cof, kit",
+                parse_mode="Markdown"
+            )
+            return
+
+        concepto = partes[4].strip().lower()
+
+    # Validar concepto (área)
+    if not concepto or concepto not in AREAS_VALIDAS:
+        await update.message.reply_text(
+            "❌ Área inválida.\n\n"
+            "Use uma destas: `alm`, `jan`, `cof`, `kit`",
+            parse_mode="Markdown"
+        )
+        return
 
     # ✅ Aviso si está vencido (NO bloquea)
     aviso_vencido = _aviso_vencido(fecha_producto)
@@ -384,8 +425,8 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # 1️⃣ Registrar movimento de saída
-        insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor)
+        # 1️⃣ Registrar movimento de saída (con concepto)
+        insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
 
         # 2️⃣ Volver a consultar el lote después de la salida
         lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
@@ -406,6 +447,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
             f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"• Área: *{AREAS_VALIDAS.get(concepto, concepto)}*\n"
             f"{msg_estoque}"
             f"{aviso_vencido}",
             parse_mode="Markdown"
@@ -414,45 +456,161 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro na saída: {e}")
 
+# ------------------------
+# VOLTA (retorno de produção)
+# ------------------------
+async def volta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
+
+    # Validación básica
+    if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "*Uso correto (não congelados):*\n"
+            "`/volta 5 kg, tomate, 30/07, HOR, alm`\n\n"
+            "*Uso correto (congelados):*\n"
+            "`/volta 2 kg, frango, 30/07, CON, C1, alm`\n\n"
+            "Áreas válidas: alm, jan, cof, kit",
+            parse_mode="Markdown"
+        )
+        return
+
+    partes = update.message.text.split(',')
+
+    contenedor = None
+    concepto = None
+
+    if grupo == "CON":
+        # Esperado: /volta 2 kg, frango, 30/07, CON, C1, alm
+        if len(partes) < 6:
+            await update.message.reply_text(
+                "❌ Formato inválido para congelados.\n\n"
+                "Use:\n"
+                "`/volta 2 kg, frango, 30/07, CON, C1, alm`\n\n"
+                "Áreas válidas: alm, jan, cof, kit",
+                parse_mode="Markdown"
+            )
+            return
+
+        contenedor = partes[4].strip().upper()
+        concepto = partes[5].strip().lower()
+
+    else:
+        # Esperado: /volta 5 kg, tomate, 30/07, HOR, alm
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Formato inválido.\n\n"
+                "Use:\n"
+                "`/volta 5 kg, tomate, 30/07, HOR, alm`\n\n"
+                "Áreas válidas: alm, jan, cof, kit",
+                parse_mode="Markdown"
+            )
+            return
+
+        concepto = partes[4].strip().lower()
+
+    # Validar concepto (área)
+    if not concepto or concepto not in AREAS_VALIDAS:
+        await update.message.reply_text(
+            "❌ Área inválida.\n\n"
+            "Use uma destas: `alm`, `jan`, `cof`, `kit`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        # Registrar VOLTA como ENTRADA (suma stock), con concepto=área
+        insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
+
+        # Consultar lote actualizado en stock_actual
+        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        if lote:
+            _, q_restante, un_restante, _, _, cont = lote
+            extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
+            msg_estoque = (
+                f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
+                f"({fecha_producto.strftime('%d/%m')})."
+            )
+        else:
+            msg_estoque = "📊 Entrada registrada, mas não foi possível localizar o lote no estoque."
+
+        await update.message.reply_text(
+            f"🔄 Volta registrada: {cantidad}{unidad} de {nombre} "
+            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"• Origem (área): *{AREAS_VALIDAS.get(concepto, concepto)}*\n"
+            f"{msg_estoque}",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Erro na volta: {e}")
 
 # ------------------------
 # AJUSTE
 # ------------------------
 
 async def ajuste(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    #Parseo igual a /saida
+    # Parseo igual a /saida
     nombre, cantidad, unidad, fecha_producto, grupo = parse_args(update, requiere_fecha=True)
-    
+
     if not all([nombre, cantidad, unidad, fecha_producto, grupo]):
         await update.message.reply_text(
             "❌ Formato inválido.\n\n"
             "*Não congelados:*\n"
-            "`/ajuste 20 kg, tomate, 30/07, HOR`\n\n"
+            "`/ajuste 20 kg, tomate, 30/07, HOR, ERRO`\n"
+            "`/ajuste 20 kg, tomate, 30/07, HOR, DIVG`\n\n"
             "*Congelados:*\n"
-            "`/ajuste 10 kg, frango, 30/07, CON, C1`",
+            "`/ajuste 10 kg, frango, 30/07, CON, C1, ERRO`\n"
+            "`/ajuste 10 kg, frango, 30/07, CON, C1, DIVG`",
             parse_mode="Markdown"
         )
         return
-    
+
+    partes = [p.strip() for p in update.message.text.split(",")]
+
     # 2️⃣ Contenedor (solo CON)
     contenedor = None
+    concepto = None
+
     if grupo == "CON":
-        partes = update.message.text.split(',')
-        if len(partes) < 5:
+        # Esperado: /ajuste X unid, nombre, data, CON, C1, CONCEITO
+        if len(partes) < 6:
             await update.message.reply_text(
-                "❌ Indique o contêiner (C1/C2/C3).\n"
-                "Exemplo: `/ajuste 10 kg, frango, 30/07, CON, C1`",
+                "❌ Formato inválido para congelados.\n"
+                "Exemplo: `/ajuste 10 kg, frango, 30/07, CON, C1, ERRO`",
                 parse_mode="Markdown"
             )
             return
-        contenedor = partes[4].strip().upper()
+        contenedor = partes[4].upper()
+        concepto = partes[5].upper()
+    else:
+        # Esperado: /ajuste X unid, nombre, data, HOR, CONCEITO
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Indique o conceito do ajuste.\n"
+                "Exemplos:\n"
+                "`/ajuste 3 kg, tomate, 30/07, HOR, ERRO`\n"
+                "`/ajuste 3 kg, tomate, 30/07, HOR, DIVG`",
+                parse_mode="Markdown"
+            )
+            return
+        concepto = partes[4].upper()
 
-    # 3️⃣ Buscar lote exacto en stock_actual
+    # 3️⃣ Validar conceito
+    if concepto not in ("ERRO", "DIVG"):
+        await update.message.reply_text(
+            "❌ Conceito inválido.\n"
+            "Use apenas: `ERRO` ou `DIVG`.",
+            parse_mode="Markdown"
+        )
+        return
+
+    # 4️⃣ Buscar lote exacto en stock_actual
     lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
 
     if not lote:
         await update.message.reply_text(
-            "❌ Nenhum lote encontrado para ajuste\n"
+            "❌ Nenhum lote encontrado para ajuste.\n"
             "Verifique nome, data e grupo."
         )
         return
@@ -460,37 +618,61 @@ async def ajuste(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # lote = (nombre, cantidad, unidade, grupo, fecha_producto, contenedor)
     _, cantidad_lote, unidad_lote, _, _, _ = lote
 
-    # 4️⃣ Validación de unidad
+    # 5️⃣ Validación de unidad
     if unidad.lower() != (unidad_lote or "").lower():
-        await update.message.reply_text(
-            "❌ Unidade diferente da cadastrada para esse lote."
-        )
+        await update.message.reply_text("❌ Unidade diferente da cadastrada para esse lote.")
         return
 
-    # 5️⃣ Regla NO negociable: ajuste SOLO TOTAL
-    if int(cantidad_lote) != int(cantidad):
-        await update.message.reply_text(
-            "❌ Ajuste não permitido\n"
-            "A quantidade deve ser exatamente a do lote."
-        )
+    # 6️⃣ Regras por conceito
+    try:
+        cantidad = int(cantidad)
+        cantidad_lote = int(cantidad_lote)
+    except ValueError:
+        await update.message.reply_text("❌ Quantidade inválida.")
         return
+
+    if cantidad <= 0:
+        await update.message.reply_text("❌ A quantidade deve ser maior que zero.")
+        return
+
+    # ERRO = remove lote inteiro (força)
+    if concepto == "ERRO":
+        cantidad_a_remover = cantidad_lote
+
+    # DIVG = pode parcial, mas nunca maior que o lote
+    else:  # DIVG
+        if cantidad > cantidad_lote:
+            await update.message.reply_text(
+                "❌ Ajuste DIVG não permitido.\n"
+                "A quantidade não pode ser maior que a do lote."
+            )
+            return
+        cantidad_a_remover = cantidad
 
     try:
-        # 6️⃣ Registrar movimiento de AJUSTE
+        # 7️⃣ Registrar movimiento de AJUSTE
         insertar_producto(
             nombre=nombre,
-            cantidad=cantidad,
+            cantidad=cantidad_a_remover,
             tipo="ajuste",
             fecha_producto=fecha_producto,
             unidade=unidad,
             grupo=grupo,
-            contenedor=contenedor
+            contenedor=contenedor,
+            concepto=concepto
         )
 
-        await update.message.reply_text(
-            "🛠️ Ajuste realizado com sucesso\n"
-            "O lote foi removido do estoque."
-        )
+        if concepto == "ERRO":
+            await update.message.reply_text(
+                f"🛠️ Ajuste ERRO realizado.\n"
+                f"O lote foi removido por completo ({cantidad_lote} {unidad})."
+            )
+        else:
+            restante = cantidad_lote - cantidad_a_remover
+            await update.message.reply_text(
+                f"🛠️ Ajuste DIVG realizado.\n"
+                f"Removido: {cantidad_a_remover} {unidad} | Restante no lote: {restante} {unidad}"
+            )
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro no ajuste: {e}")

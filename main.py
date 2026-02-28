@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config.config import BOT_TOKEN
-from controllers.controller1 import start, menu, entrada, saida, estoque, vencimentos, devolucao, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis, descarte_vencidos, ajuste
+from controllers.controller1 import start, menu, entrada, saida, volta, estoque, vencimentos, devolucao, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis, descarte_vencidos, ajuste
 from models.db import crear_tablas_productos, insertar_producto, obtener_productos
 
 
@@ -11,10 +11,11 @@ BOT_COMMANDS = [
     BotCommand("buscar", "Buscar produtos no estoque"),
     BotCommand("entrada", "Registrar uma entrada de produto"),
     BotCommand("saida", "Registrar uma saída de produto"),
+    BotCommand("volta", "Registrar retorno de produção (soma no estoque)"),
     BotCommand("ajuste","Anular um lote registrado incorretamente"),
+    BotCommand("descarte_vencidos", "Listar itens vencidos para descarte"),
     BotCommand("descarte", "Registrar um descarte"),
     BotCommand("devolucao", "Registrar devolução ao fornecedor (baixa no estoque)"),
-    BotCommand("descarte_vencidos", "Listar itens vencidos para descarte"),
     BotCommand("vencimentos", "Ver produtos vencidos"),
     BotCommand("estoque", "Ver resumo geral"),
     BotCommand("estoque_congelados", "Ver estoque de produtos congelados"),
@@ -38,10 +39,11 @@ application.add_handler(CommandHandler("menu", menu))
 application.add_handler(CommandHandler("buscar", buscar))
 application.add_handler(CommandHandler("entrada", entrada))
 application.add_handler(CommandHandler("saida", saida))
+application.add_handler(CommandHandler("volta", volta))
 application.add_handler(CommandHandler("ajuste", ajuste))
+application.add_handler(CommandHandler("descarte_vencidos", descarte_vencidos))
 application.add_handler(CommandHandler("descarte", descarte))
 application.add_handler(CommandHandler("devolucao", devolucao))
-application.add_handler(CommandHandler("descarte_vencidos", descarte_vencidos))
 application.add_handler(CommandHandler("vencimentos", vencimentos))
 application.add_handler(CommandHandler("estoque", estoque))
 application.add_handler(CommandHandler("estoque_congelados", estoque_congelados))

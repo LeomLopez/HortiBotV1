@@ -21,6 +21,7 @@ def get_db_connection():
 def crear_tablas_productos():
     """
     Crea la tabla de movimientos si no existe, con la estructura necesaria.
+    Nota: Si ya existe en producción, esto no la modifica; solo sirve para instalaciones nuevas.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -36,7 +37,9 @@ def crear_tablas_productos():
             unidade VARCHAR(50),
             grupo VARCHAR(50),
             fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(nombre, tipo, fecha_producto, unidade, grupo)
+            contenedor VARCHAR(10),
+            concepto VARCHAR(30),
+            UNIQUE(nombre, tipo, fecha_producto, unidade, grupo, contenedor, concepto)
         );
     """)
 
@@ -49,39 +52,45 @@ def crear_tablas_productos():
 # ----------------------------
 # Insertar producto / movimiento
 # ----------------------------
-def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor=None):
+def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor=None, concepto=None):
     """
-    Consolida movimientos idénticos en 'movimientos' y actualiza 'stock_actual'.
-    - 'movimientos': guarda histórico consolidado (no borra nada).
-    - 'stock_actual': refleja el estado actual y elimina cuando cantidad <= 0.
+    Guarda histórico en 'movimientos' y actualiza 'stock_actual'.
+    - 'movimientos': histórico (no borra nada).
+    - 'stock_actual': estado actual (suma/resta y elimina cuando cantidad <= 0).
     """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Normalización
-    if nombre: nombre = nombre.lower()
-    if tipo: tipo = tipo.lower()
-    if unidade: unidade = unidade.lower()
-    if grupo: grupo = grupo.upper()
+    # Normalización básica
+    if nombre: nombre = nombre.lower().strip()
+    if tipo: tipo = tipo.lower().strip()
+    if unidade: unidade = unidade.lower().strip()
+    if grupo: grupo = grupo.upper().strip()
+
+    # Normalizar concepto (área)
+    if concepto is not None:
+        concepto = str(concepto).strip().lower()
+        if concepto == "":
+            concepto = None
 
     # Manejo contenedor
     if grupo == "CON":
         if not contenedor:
             raise ValueError("Debe indicar contenedor (C1, C2 o C3) para congelados.")
-        contenedor = contenedor.upper()
+        contenedor = str(contenedor).strip().upper()
     else:
         contenedor = "N/A"
 
-    # Determinar signo (entrada suma, salida/descarte resta en stock_actual)
+    # Determinar signo (entrada suma, salida/descarte/devolucao resta en stock_actual)
     signo = 1 if tipo == "entrada" else -1
 
-    # 1. Movimientos: Consolidar por clave única
+    # 1) Movimientos (histórico)
     cursor.execute("""
-        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor)
-        VALUES (%s, %s, %s, %s, %s, %s, %s);
-    """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor))
+        INSERT INTO movimientos (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor, concepto)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+    """, (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor, concepto))
 
-    # 2. Stock actual: Actualizar y limpiar si cantidad <= 0
+    # 2) Stock actual (estado)
     cursor.execute("""
         INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -95,7 +104,6 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     cursor.close()
     conn.close()
     print(f"✅ Producto '{nombre}' ({tipo}) registrado con éxito.")
-
 
 # ----------------------------
 # Obtener productos
