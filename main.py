@@ -13,9 +13,9 @@ BOT_COMMANDS = [
     BotCommand("saida", "Registrar uma saída de produto"),
     BotCommand("volta", "Registrar retorno de produção (soma no estoque)"),
     BotCommand("ajuste","Anular um lote registrado incorretamente"),
+    BotCommand("descarte_vencidos", "Listar itens vencidos para descarte"),
     BotCommand("descarte", "Registrar um descarte"),
     BotCommand("devolucao", "Registrar devolução ao fornecedor (baixa no estoque)"),
-    BotCommand("descarte_vencidos", "Listar itens vencidos para descarte"),
     BotCommand("vencimentos", "Ver produtos vencidos"),
     BotCommand("estoque", "Ver resumo geral"),
     BotCommand("estoque_congelados", "Ver estoque de produtos congelados"),
@@ -41,9 +41,9 @@ application.add_handler(CommandHandler("entrada", entrada))
 application.add_handler(CommandHandler("saida", saida))
 application.add_handler(CommandHandler("volta", volta))
 application.add_handler(CommandHandler("ajuste", ajuste))
+application.add_handler(CommandHandler("descarte_vencidos", descarte_vencidos))
 application.add_handler(CommandHandler("descarte", descarte))
 application.add_handler(CommandHandler("devolucao", devolucao))
-application.add_handler(CommandHandler("descarte_vencidos", descarte_vencidos))
 application.add_handler(CommandHandler("vencimentos", vencimentos))
 application.add_handler(CommandHandler("estoque", estoque))
 application.add_handler(CommandHandler("estoque_congelados", estoque_congelados))
