@@ -16,6 +16,7 @@ def _fmt_fecha(venc):
     if not venc:
         return "—"
 
+    venc = _only_date(venc)   # 👈 normaliza datetime -> date
     hoy = date.today()
 
     if venc.year == hoy.year:
