@@ -12,9 +12,16 @@ def _only_date(d):
     return d
 
 
-
 def _fmt_fecha(venc):
-    return venc.strftime("%d/%m") if venc else "—"
+    if not venc:
+        return "—"
+
+    hoy = date.today()
+
+    if venc.year == hoy.year:
+        return venc.strftime("%d/%m")
+
+    return venc.strftime("%d/%m/%Y")
 
 def _consolidar_por_nombre_unidad_fecha(rows_tuples):
     """
