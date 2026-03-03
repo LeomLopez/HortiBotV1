@@ -311,7 +311,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
             msg_estoque = (
                 f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
-                f"({fecha_producto.strftime('%d/%m')})."
+                f"({_fmt_fecha(fecha_producto)})."
             )
         else:
             msg_estoque = (
@@ -321,7 +321,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"📥 Entrada registrada: {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"({_fmt_fecha(fecha_producto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
             f"{msg_estoque}"
             f"{aviso_vencido}",
             parse_mode="Markdown"
@@ -406,7 +406,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ✅ Validación de existencia y cantidad
     if estoque_lote < cantidad:
         await update.message.reply_text(
-            f"⚠️ *Estoque insuficiente para {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
+            f"⚠️ *Estoque insuficiente para {nombre} ({_fmt_fecha(fecha_producto)}).*\n\n"
             f"• Estoque do lote: {estoque_lote}{unidade_lote or unidad}\n"
             f"• Saída solicitada: {cantidad}{unidad}",
             parse_mode="Markdown"
@@ -435,18 +435,18 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
             msg_estoque = (
                 f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
-                f"({fecha_producto.strftime('%d/%m')})."
+                f"({_fmt_fecha(fecha_producto)})."
             )
         else:
             msg_estoque = (
-                f"📊 O lote de {nombre} ({fecha_producto.strftime('%d/%m')}) "
+                f"📊 O lote de {nombre} ({_fmt_fecha(fecha_producto)}) "
                 f"foi zerado no estoque."
             )
 
         # 3️⃣ Mensaje final (con aviso de vencido)
         await update.message.reply_text(
             f"📤 Saída registrada: {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"({_fmt_fecha(fecha_producto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
             f"• Área: *{AREAS_VALIDAS.get(concepto, concepto)}*\n"
             f"{msg_estoque}"
             f"{aviso_vencido}",
@@ -529,14 +529,14 @@ async def volta(update: Update, context: ContextTypes.DEFAULT_TYPE):
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
             msg_estoque = (
                 f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
-                f"({fecha_producto.strftime('%d/%m')})."
+                f"({_fmt_fecha(fecha_producto)})."
             )
         else:
             msg_estoque = "📊 Entrada registrada, mas não foi possível localizar o lote no estoque."
 
         await update.message.reply_text(
             f"🔄 Volta registrada: {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"({_fmt_fecha(fecha_producto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
             f"• Origem (área): *{AREAS_VALIDAS.get(concepto, concepto)}*\n"
             f"{msg_estoque}",
             parse_mode="Markdown"
@@ -694,7 +694,7 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"🗑️ Descarte registrado: {quantidade}{unidade} de {nome} "
-        f"({data_produto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
+        f"({_fmt_fecha(data_produto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
     )
     
 #Comando Descarte Vencidos
@@ -717,7 +717,7 @@ async def descarte_vencidos(update, context):
 
         mensagem += (
             f"• {nome}: {quantidade}{unidade}{extra}\n"
-            f"  📅 Vencido há {dias} dia(s) ({fecha.strftime('%d/%m')})\n"
+            f"  📅 Vencido há {dias} dia(s) ({_fmt_fecha(fecha)})\n"
         )
 
     mensagem += (
@@ -766,7 +766,7 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ✅ Validación de existencia y cantidad
     if estoque_lote < cantidad:
         await update.message.reply_text(
-            f"⚠️ *Estoque insuficiente para devolução de {nombre} ({fecha_producto.strftime('%d/%m')}).*\n\n"
+            f"⚠️ *Estoque insuficiente para devolução de {nombre} ({_fmt_fecha(fecha_producto)}).*\n\n"
             f"• Estoque do lote: {estoque_lote}{unidade_lote or unidad}\n"
             f"• Devolução solicitada: {cantidad}{unidad}",
             parse_mode="Markdown"
@@ -795,17 +795,17 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
             msg_estoque = (
                 f"📊 Agora há {q_restante}{un_restante} de {nombre}{extra} "
-                f"({fecha_producto.strftime('%d/%m')})."
+                f"({_fmt_fecha(fecha_producto)})."
             )
         else:
             msg_estoque = (
-                f"📊 O lote de {nombre} ({fecha_producto.strftime('%d/%m')}) "
+                f"📊 O lote de {nombre} ({_fmt_fecha(fecha_producto)}) "
                 f"foi zerado no estoque."
             )
 
         await update.message.reply_text(
             f"↩️📦 *Devolução ao fornecedor registrada:* {cantidad}{unidad} de {nombre} "
-            f"({fecha_producto.strftime('%d/%m')}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+            f"({_fmt_fecha(fecha_producto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
             f"{msg_estoque}",
             parse_mode="Markdown"
         )
@@ -846,12 +846,12 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if alerta_hoy:
         mensagem += "\n⚠️ *Vencem HOJE:*\n"
         for nome, quantidade, unidade, data in alerta_hoy:
-            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+            mensagem += f"• {nome}: {quantidade}{unidade} ({_fmt_fecha(data)})\n"
 
     if alerta_proximos:
         mensagem += "\n⏳ *Próximos a vencer (2 dias):*\n"
         for nome, quantidade, unidade, data in alerta_proximos:
-            mensagem += f"• {nome}: {quantidade}{unidade} ({data.strftime('%d/%m')})\n"
+            mensagem += f"• {nome}: {quantidade}{unidade} ({_fmt_fecha(data)})\n"
 
     await update.message.reply_text(mensagem, parse_mode="Markdown")
 
@@ -918,7 +918,7 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for contenedor, items in contenedores.items():
         mensagem += f"\n*{contenedor}*\n"
         for nome, quantidade, unidade, fecha_producto in items:
-            mensagem += f"• {nome}: {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+            mensagem += f"• {nome}: {quantidade}{unidade} ({_fmt_fecha(fecha_producto)})\n"
 
     if alerta_hoy or alerta_proximos:
         mensagem += "\n📅 *Alertas de Vencimento*\n"
@@ -926,12 +926,12 @@ async def estoque_congelados(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if alerta_hoy:
             mensagem += "\n⚠️ *Vencem HOJE:*\n"
             for nome, quantidade, unidade, fecha_producto, contenedor in alerta_hoy:
-                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({_fmt_fecha(fecha_producto)})\n"
 
         if alerta_proximos:
             mensagem += "\n⏳ *Próximos a vencer (2 dias):*\n"
             for nome, quantidade, unidade, fecha_producto, contenedor in alerta_proximos:
-                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({fecha_producto.strftime('%d/%m')})\n"
+                mensagem += f"• {nome} ({contenedor}): {quantidade}{unidade} ({_fmt_fecha(fecha_producto)})\n"
 
     await _send_long(update, mensagem, parse_mode="Markdown")
     
@@ -1056,10 +1056,10 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensagem_cont = f"\n*{cont}*\n" if cont else "\n*Sem contêiner*\n"
                 mensaje += mensagem_cont
                 for nombre, quantidade, unidade, fecha in contenedores[cont]:
-                    mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
+                    mensaje += f"• {nombre}: {quantidade}{unidade} ({_fmt_fecha(fecha)})\n"
         else:
             for nombre, quantidade, unidade, grupo, fecha, _ in resultados:
-                mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
+                mensaje += f"• {nombre}: {quantidade}{unidade} ({_fmt_fecha(fecha)})\n"
 
         await _send_long(update, mensaje, parse_mode="Markdown")
         return
@@ -1075,7 +1075,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         mensaje = f"*Estoque no Contêiner {query_upper} (Congelados):*\n"
         for nombre, quantidade, unidade, grupo, fecha, contenedor in resultados:
-            mensaje += f"• {nombre}: {quantidade}{unidade} ({fecha.strftime('%d/%m')})\n"
+            mensaje += f"• {nombre}: {quantidade}{unidade} ({_fmt_fecha(fecha)})\n"
 
         await _send_long(update, mensaje, parse_mode="Markdown")
         return
@@ -1175,7 +1175,7 @@ async def movimentacoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for _, nome, quantidade, tipo, fecha_producto, unidade, grupo, fecha_mov in sorted(movimientos_filtrados, key=lambda x: x[7]):
             mensaje += (
                 f"• {nome} – {quantidade}{unidade} ({tipo.upper()}) – Grupo: {grupo} "
-                f"– Produto: {fecha_producto.strftime('%d/%m')} – {fecha_mov.strftime('%H:%M')}\n"
+                f"– Produto: {_fmt_fecha(fecha_producto)} – {fecha_mov.strftime('%H:%M')}\n"
             )
 
         await _send_long(update, mensaje, parse_mode="Markdown")       

@@ -15,13 +15,10 @@ def _only_date(d):
 def _fmt_fecha(venc):
     if not venc:
         return "—"
-
-    venc = _only_date(venc)   # 👈 normaliza datetime -> date
+    venc = _only_date(venc)   # normaliza datetime -> date
     hoy = date.today()
-
     if venc.year == hoy.year:
         return venc.strftime("%d/%m")
-
     return venc.strftime("%d/%m/%Y")
 
 def _consolidar_por_nombre_unidad_fecha(rows_tuples):
