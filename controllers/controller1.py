@@ -134,7 +134,7 @@ def calcular_estoque(nome, grupo, produtos):
     estoque = 0
     for _, n, q, t, d, u, g, _ in produtos:
         if n.lower() == nome.lower() and g == grupo:
-            if t == 'entrada':
+            if t in ['entrada', 'volta']:
                 estoque += q
             elif t in ['saida', 'descarte', 'devolucao']:
                 estoque -= q
@@ -520,7 +520,7 @@ async def volta(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Registrar VOLTA como ENTRADA (suma stock), con concepto=área
-        insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
+        insertar_producto(nombre, cantidad, 'volta', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
 
         # Consultar lote actualizado en stock_actual
         lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
@@ -818,7 +818,7 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # VENCIMIENTOS
 # ------------------------
 async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    produtos = obtener_productos()
+    produtos = obtener_stock_actual()
     hoje = datetime.now().date()
 
     #mover_para_descarte(produtos)  # Descarta automáticamente
@@ -826,9 +826,7 @@ async def vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     alerta_proximos = []
     alerta_hoy = []
 
-    for _, nome, quantidade, tipo, data, unidade, grupo, _ in produtos:
-        if tipo != "entrada":
-            continue
+    for nome, quantidade, unidade, grupo, data, contenedor in produtos:
 
         dias_restantes = (data - hoje).days
 

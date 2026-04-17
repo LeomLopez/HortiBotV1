@@ -82,7 +82,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
         contenedor = "N/A"
 
     # Determinar signo (entrada suma, salida/descarte/devolucao resta en stock_actual)
-    signo = 1 if tipo == "entrada" else -1
+    signo = 1 if tipo in ["entrada", "volta"] else -1
 
     # 1) Movimientos (histórico)
     cursor.execute("""
