@@ -685,16 +685,80 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not nome or not quantidade or not unidade or not data_produto or not grupo:
         await update.message.reply_text(
-            "❌ Use o formato: /descarte [quantidade] [unidade], [produto], [dd/mm], [grupo]\n"
-            "Exemplo: /descarte 3 kg, tomate, 29/07, HOR"
+            "❌ Formato inválido.\n\n"
+            "*Uso correto (não congelados):*\n"
+            "`/descarte 3 kg, tomate, 29/07, HOR`\n\n"
+            "*Uso correto (congelados):*\n"
+            "`/descarte 3 kg, frango, 29/07, CON, C1`",
+            parse_mode="Markdown"
         )
         return
 
-    insertar_producto(nome, quantidade, 'descarte', data_produto, unidade, grupo)
+    partes = update.message.text.split(',')
+    contenedor = None
+
+    if grupo == "CON":
+        if len(partes) < 5:
+            await update.message.reply_text(
+                "❌ Indique o contêiner (C1/C2/C3) para congelados.\n"
+                "Exemplo: `/descarte 3 kg, frango, 29/07, CON, C1`",
+                parse_mode="Markdown"
+            )
+            return
+        contenedor = partes[4].strip().upper()
+
+    lote = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor)
+    if not lote:
+        await update.message.reply_text(
+            "❌ Nenhum lote encontrado para descarte.\n"
+            "Verifique nome, data, grupo e contêiner."
+        )
+        return
+
+    _, quantidade_lote, unidade_lote, _, _, cont_lote = lote
+    unidade_lote = (unidade_lote or "").lower()
+
+    if unidade_lote and unidade.lower() != unidade_lote:
+        await update.message.reply_text(
+            "❌ Unidade diferente da cadastrada para esse lote.\n\n"
+            f"• Unidade do lote: *{unidade_lote}*\n"
+            f"• Unidade informada: *{unidade.lower()}*\n\n"
+            "Use a mesma unidade do estoque para registrar o descarte.",
+            parse_mode="Markdown"
+        )
+        return
+
+    if int(quantidade_lote or 0) < quantidade:
+        await update.message.reply_text(
+            f"⚠️ *Estoque insuficiente para descarte de {nome} ({_fmt_fecha(data_produto)}).*\n\n"
+            f"• Estoque do lote: {quantidade_lote}{unidade_lote or unidade}\n"
+            f"• Descarte solicitado: {quantidade}{unidade}",
+            parse_mode="Markdown"
+        )
+        return
+
+    insertar_producto(nome, quantidade, 'descarte', data_produto, unidade, grupo, contenedor)
+
+    lote_restante = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor)
+    if lote_restante:
+        _, q_restante, un_restante, _, _, cont = lote_restante
+        extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
+        msg_estoque = (
+            f"📊 Agora há {q_restante}{un_restante} de {nome}{extra} "
+            f"({_fmt_fecha(data_produto)})."
+        )
+    else:
+        extra = f" – ({cont_lote})" if grupo == "CON" and cont_lote and cont_lote != "N/A" else ""
+        msg_estoque = (
+            f"📊 O lote de {nome}{extra} ({_fmt_fecha(data_produto)}) "
+            f"foi zerado no estoque."
+        )
 
     await update.message.reply_text(
         f"🗑️ Descarte registrado: {quantidade}{unidade} de {nome} "
-        f"({_fmt_fecha(data_produto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}"
+        f"({_fmt_fecha(data_produto)}) – Grupo: {GRUPOS_MAP.get(grupo, grupo)}\n"
+        f"{msg_estoque}",
+        parse_mode="Markdown"
     )
     
 #Comando Descarte Vencidos
