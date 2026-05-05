@@ -81,8 +81,8 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     else:
         contenedor = "N/A"
 
-    # Determinar signo (entrada suma, salida/descarte/devolucao resta en stock_actual)
-    signo = 1 if tipo in ["entrada", "volta"] else -1
+    # Determinar signo (entradas suman; bajas restan en stock_actual)
+    signo = 1 if tipo in ["entrada", "volta", "transferencia_entrada"] else -1
 
     # 1) Movimientos (histórico)
     cursor.execute("""
@@ -203,7 +203,90 @@ def obtener_stock_vencido(grupo=None):
 
 
 # Obtener producto especifico
-def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None):
+def registrar_transferencia(
+    nombre,
+    cantidad,
+    fecha_producto,
+    unidade,
+    grupo_origen,
+    grupo_destino,
+    contenedor_origen=None,
+    contenedor_destino=None,
+):
+    """
+    Registra una transferencia de grupo en una sola transacción:
+    - transferencia_saida resta del grupo origen
+    - transferencia_entrada suma al grupo destino
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if nombre: nombre = nombre.lower().strip()
+    if unidade: unidade = unidade.lower().strip()
+    if grupo_origen: grupo_origen = grupo_origen.upper().strip()
+    if grupo_destino: grupo_destino = grupo_destino.upper().strip()
+
+    contenedor_origen = (
+        str(contenedor_origen).strip().upper()
+        if grupo_origen == "CON"
+        else "N/A"
+    )
+    contenedor_destino = (
+        str(contenedor_destino).strip().upper()
+        if grupo_destino == "CON"
+        else "N/A"
+    )
+
+    stamp = datetime.now().strftime("%H%M%S%f")
+    concepto_saida = f"p:{grupo_destino}:{stamp}"
+    concepto_entrada = f"d:{grupo_origen}:{stamp}"
+
+    try:
+        cursor.execute("""
+            INSERT INTO movimientos
+                (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor, concepto)
+            VALUES
+                (%s, %s, %s, %s, %s, %s, %s, %s),
+                (%s, %s, %s, %s, %s, %s, %s, %s);
+        """, (
+            nombre, cantidad, "transferencia_saida", fecha_producto, unidade,
+            grupo_origen, contenedor_origen, concepto_saida,
+            nombre, cantidad, "transferencia_entrada", fecha_producto, unidade,
+            grupo_destino, contenedor_destino, concepto_entrada,
+        ))
+
+        cursor.execute("""
+            UPDATE stock_actual
+            SET cantidad = cantidad - %s
+            WHERE nombre = %s
+              AND unidade = %s
+              AND grupo = %s
+              AND fecha_producto = %s
+              AND contenedor = %s;
+        """, (cantidad, nombre, unidade, grupo_origen, fecha_producto, contenedor_origen))
+
+        if cursor.rowcount == 0:
+            raise ValueError("Lote de origem não encontrado para transferência.")
+
+        cursor.execute("""
+            INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (nombre, unidade, grupo, fecha_producto, contenedor)
+            DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad;
+        """, (nombre, unidade, grupo_destino, fecha_producto, contenedor_destino, cantidad))
+
+        cursor.execute("DELETE FROM stock_actual WHERE cantidad <= 0;")
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None, unidade=None):
     """
     Devuelve el lote actual en stock_actual para:
     - nombre
@@ -232,6 +315,10 @@ def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None):
     if grupo and grupo.upper().strip() == "CON":
         sql += " AND contenedor = %s"
         params.append((contenedor or "N/A").upper().strip())
+
+    if unidade:
+        sql += " AND unidade = %s"
+        params.append(unidade.lower().strip())
 
     cursor.execute(sql, params)
     row = cursor.fetchone()

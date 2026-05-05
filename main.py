@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config.config import BOT_TOKEN
-from controllers.controller1 import start, menu, entrada, saida, volta, estoque, vencimentos, devolucao, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis, descarte_vencidos, ajuste
+from controllers.controller1 import start, menu, entrada, saida, volta, estoque, vencimentos, devolucao, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis, descarte_vencidos, ajuste, mover
 from models.db import crear_tablas_productos, insertar_producto, obtener_productos
 
 
@@ -12,6 +12,7 @@ BOT_COMMANDS = [
     BotCommand("entrada", "Registrar uma entrada de produto"),
     BotCommand("saida", "Registrar uma saída de produto"),
     BotCommand("volta", "Registrar retorno de produção (soma no estoque)"),
+    BotCommand("mover", "Corrigir grupo de um lote"),
     BotCommand("ajuste","Anular um lote registrado incorretamente"),
     BotCommand("descarte_vencidos", "Listar itens vencidos para descarte"),
     BotCommand("descarte", "Registrar um descarte"),
@@ -40,6 +41,7 @@ application.add_handler(CommandHandler("buscar", buscar))
 application.add_handler(CommandHandler("entrada", entrada))
 application.add_handler(CommandHandler("saida", saida))
 application.add_handler(CommandHandler("volta", volta))
+application.add_handler(CommandHandler("mover", mover))
 application.add_handler(CommandHandler("ajuste", ajuste))
 application.add_handler(CommandHandler("descarte_vencidos", descarte_vencidos))
 application.add_handler(CommandHandler("descarte", descarte))

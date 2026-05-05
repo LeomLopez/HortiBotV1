@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
-from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido
+from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido, registrar_transferencia
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha, mensaje_por_fecha_from_tuples, mensaje_order_from_tuples
@@ -18,6 +18,8 @@ GRUPOS_MAP = {
     "QUI": "🧪 Químicos",        
     "DES": "🧻 Descartáveis"     
 }
+
+GRUPOS_VALIDOS = set(GRUPOS_MAP.keys())
 
 AREAS_VALIDAS = {"alm": "Almoço", "jan": "Janta", "cof": "Coffee", "kit": "Kit Lanche"}
 
@@ -128,6 +130,76 @@ def parse_args(update: Update, requiere_fecha=False):
 
     except Exception:
         return (None,) * 5
+
+
+def parse_mover_args(update: Update):
+    """
+    Parsea:
+    /mover 50 kg, maçã, 07/05, HOR, FRU
+    /mover 10 kg, frango, 07/05, CON, C1, FRU
+    /mover 10 kg, frango, 07/05, HOR, CON, C2
+    """
+    try:
+        texto = update.message.text.split(" ", 1)
+        if len(texto) < 2:
+            return None
+
+        partes = [p.strip() for p in texto[1].split(",")]
+        if len(partes) < 5:
+            return None
+
+        cant_unid = partes[0].split()
+        if len(cant_unid) != 2:
+            return None
+
+        try:
+            cantidad = int(cant_unid[0])
+        except ValueError:
+            return None
+
+        unidade = cant_unid[1].lower()
+        nombre = partes[1].lower()
+        fecha_producto = parse_fecha_flexible(partes[2])
+        grupo_origen = partes[3].upper()
+        grupo_destino = None
+        contenedor_origen = None
+        contenedor_destino = None
+
+        if not fecha_producto:
+            return None
+
+        if grupo_origen == "CON":
+            if len(partes) < 6:
+                return {
+                    "error": "contenedor_origen",
+                    "grupo_origen": grupo_origen,
+                    "grupo_destino": partes[4].upper() if len(partes) > 4 else None,
+                }
+            contenedor_origen = partes[4].upper()
+            grupo_destino = partes[5].upper()
+        else:
+            grupo_destino = partes[4].upper()
+            if grupo_destino == "CON":
+                if len(partes) < 6:
+                    return {
+                        "error": "contenedor_destino",
+                        "grupo_origen": grupo_origen,
+                        "grupo_destino": grupo_destino,
+                    }
+                contenedor_destino = partes[5].upper()
+
+        return {
+            "nombre": nombre,
+            "cantidad": cantidad,
+            "unidade": unidade,
+            "fecha_producto": fecha_producto,
+            "grupo_origen": grupo_origen,
+            "grupo_destino": grupo_destino,
+            "contenedor_origen": contenedor_origen,
+            "contenedor_destino": contenedor_destino,
+        }
+    except Exception:
+        return None
 
 
 def calcular_estoque(nome, grupo, produtos):
@@ -254,6 +326,14 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 - Congelados (com contêiner + área):
 `/volta 2 kg, frango, 30/07, CON, C1, alm`
+
+*➤ Corrigir grupo*
+- Não congelados:
+`/mover 50 kg, maçã, 07/05, HOR, FRU`
+
+- Com congelados:
+`/mover 10 kg, frango, 07/05, CON, C1, FRU`
+`/mover 10 kg, frango, 07/05, HOR, CON, C2`
 
 *➤ Outros comandos*
 - `/estoque` → Ver estoque total  
@@ -676,6 +756,142 @@ async def ajuste(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro no ajuste: {e}")
+
+
+# ------------------------
+# MOVER (corrigir grupo)
+# ------------------------
+async def mover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dados = parse_mover_args(update)
+
+    if not dados:
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "*Não congelados:*\n"
+            "`/mover 50 kg, maçã, 07/05, HOR, FRU`\n\n"
+            "*Origem congelada:*\n"
+            "`/mover 10 kg, frango, 07/05, CON, C1, FRU`\n\n"
+            "*Destino congelado:*\n"
+            "`/mover 10 kg, frango, 07/05, HOR, CON, C2`",
+            parse_mode="Markdown"
+        )
+        return
+
+    if dados.get("error") in ("contenedor_origen", "contenedor_destino"):
+        await update.message.reply_text(
+            "❌ Contêiner obrigatório quando o grupo CON estiver envolvido.\n\n"
+            "Exemplos:\n"
+            "`/mover 10 kg, frango, 07/05, CON, C1, FRU`\n"
+            "`/mover 10 kg, frango, 07/05, HOR, CON, C2`",
+            parse_mode="Markdown"
+        )
+        return
+
+    nombre = dados["nombre"]
+    cantidad = dados["cantidad"]
+    unidade = dados["unidade"]
+    fecha_producto = dados["fecha_producto"]
+    grupo_origen = dados["grupo_origen"]
+    grupo_destino = dados["grupo_destino"]
+    contenedor_origen = dados["contenedor_origen"]
+    contenedor_destino = dados["contenedor_destino"]
+
+    if cantidad <= 0:
+        await update.message.reply_text("❌ A quantidade deve ser maior que zero.")
+        return
+
+    grupos_invalidos = [
+        grupo for grupo in (grupo_origen, grupo_destino)
+        if grupo not in GRUPOS_VALIDOS
+    ]
+    if grupos_invalidos:
+        await update.message.reply_text(
+            "❌ Grupo inválido.\n\n"
+            "Use apenas: `HOR`, `FRU`, `LAC`, `CON`, `SEC`, `QUI`, `DES`.",
+            parse_mode="Markdown"
+        )
+        return
+
+    if grupo_origen == grupo_destino:
+        await update.message.reply_text("❌ O grupo de origem e o grupo de destino devem ser diferentes.")
+        return
+
+    if grupo_origen == "CON" and not contenedor_origen:
+        await update.message.reply_text("❌ Informe o contêiner de origem para CON.")
+        return
+
+    if grupo_destino == "CON" and not contenedor_destino:
+        await update.message.reply_text("❌ Informe o contêiner de destino para CON.")
+        return
+
+    lote = obtener_lote_stock_actual(
+        nombre,
+        grupo_origen,
+        fecha_producto,
+        contenedor_origen,
+        unidade=unidade,
+    )
+
+    if not lote:
+        await update.message.reply_text(
+            "❌ Lote não encontrado.\n"
+            "Verifique produto, data, unidade, grupo de origem e contêiner."
+        )
+        return
+
+    _, quantidade_lote, unidade_lote, _, _, _ = lote
+    quantidade_lote = int(quantidade_lote)
+
+    if unidade != (unidade_lote or "").lower():
+        await update.message.reply_text(
+            "❌ Unidade diferente da cadastrada para esse lote.\n\n"
+            f"• Unidade do lote: *{unidade_lote}*\n"
+            f"• Unidade informada: *{unidade}*",
+            parse_mode="Markdown"
+        )
+        return
+
+    if cantidad > quantidade_lote:
+        await update.message.reply_text(
+            "❌ Estoque insuficiente para mover.\n\n"
+            f"• Estoque do lote: {quantidade_lote}{unidade}\n"
+            f"• Quantidade solicitada: {cantidad}{unidade}"
+        )
+        return
+
+    try:
+        registrar_transferencia(
+            nombre=nombre,
+            cantidad=cantidad,
+            fecha_producto=fecha_producto,
+            unidade=unidade,
+            grupo_origen=grupo_origen,
+            grupo_destino=grupo_destino,
+            contenedor_origen=contenedor_origen,
+            contenedor_destino=contenedor_destino,
+        )
+
+        extra_origem = (
+            f" ({contenedor_origen})"
+            if grupo_origen == "CON" and contenedor_origen
+            else ""
+        )
+        extra_destino = (
+            f" ({contenedor_destino})"
+            if grupo_destino == "CON" and contenedor_destino
+            else ""
+        )
+
+        await update.message.reply_text(
+            "✅ Grupo corrigido com sucesso.\n\n"
+            f"• Produto: {nombre}\n"
+            f"• Quantidade: {cantidad}{unidade}\n"
+            f"• Data: {_fmt_fecha(fecha_producto)}\n"
+            f"• De: {GRUPOS_MAP.get(grupo_origen, grupo_origen)}{extra_origem}\n"
+            f"• Para: {GRUPOS_MAP.get(grupo_destino, grupo_destino)}{extra_destino}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Erro ao mover produto: {e}")
 
 # ------------------------
 # DESCARTE (manual)
