@@ -14,6 +14,7 @@ GRUPOS_MAP = {
     "FRU": "🍎 Frutas",
     "LAC": "🧀 Lácteos",
     "CON": "❄️ Congelados",
+    "PIC": "📍 Picking",
     "SEC": "📦 Secos",
     "QUI": "🧪 Químicos",        
     "DES": "🧻 Descartáveis"     
