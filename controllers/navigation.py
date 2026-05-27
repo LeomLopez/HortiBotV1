@@ -488,6 +488,37 @@ def _validate_stock_consuming_items(items: list[dict], action_label: str) -> str
     return None
 
 
+def _expired_items_warning(items: list[dict], modo: str) -> str:
+    today = datetime.now().date()
+    warnings = []
+    action_label = {
+        "entrada": "entrada",
+        "saida": "saída",
+    }.get(modo, "operação")
+    action_text = {
+        "entrada": "O item vencido está sendo adicionado ao estoque.",
+        "saida": "A saída pode ser confirmada, mas o item vencido está sendo liberado.",
+    }.get(modo, "Revise a operação antes de confirmar.")
+
+    for item in items:
+        fecha_producto = _parse_fecha(item["fecha"])
+        if fecha_producto and fecha_producto < today:
+            dias = (today - fecha_producto).days
+            extra = (
+                f" ({item.get('contenedor')})"
+                if item.get("grupo") == "CON" and item.get("contenedor")
+                else ""
+            )
+            warnings.append(
+                f"⚠️ Produto vencido detectado em {action_label}: {item['nome']}{extra} "
+                f"({_format_fecha(fecha_producto)}).\n"
+                f"Vencido há {dias} dia(s).\n"
+                f"{action_text}"
+            )
+
+    return "\n\n".join(warnings)
+
+
 def _validate_ajuste_items(items: list[dict]) -> str | None:
     for item in items:
         fecha_producto = _parse_fecha(item["fecha"])
@@ -604,7 +635,7 @@ def _db_concept_for_item(modo: str, item: dict) -> str | None:
 
 
 def _validate_duplicate_movements(modo: str, items: list[dict]) -> str | None:
-    if modo == "mover":
+    if modo in {"entrada", "mover", "descarte"}:
         return None
 
     tipo = DB_MODE_BY_FLOW_MODE.get(modo)
@@ -690,6 +721,11 @@ def _format_pending_review(context: ContextTypes.DEFAULT_TYPE) -> str:
         )
 
     lines.append("")
+    if context.user_data.get("modo") in {"entrada", "saida"}:
+        warning = _expired_items_warning(pending, context.user_data.get("modo"))
+        if warning:
+            lines.append(warning)
+            lines.append("")
     lines.append("Toque em Confirmar para gravar ou Cancelar para descartar.")
     return "\n".join(lines)
 
@@ -940,9 +976,13 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
             )
 
         total = len(pending)
+        warning = _expired_items_warning(pending, modo) if modo in {"entrada", "saida"} else ""
         _clear_operation_context(context)
+        message = f"✅ Operação confirmada. {total} item(ns) gravado(s)."
+        if warning:
+            message = f"{message}\n\n{warning}"
         await update.message.reply_text(
-            f"✅ Operação confirmada. {total} item(ns) gravado(s).",
+            message,
             reply_markup=reply_main_menu_markup,
         )
     except Exception as exc:

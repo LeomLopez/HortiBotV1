@@ -265,7 +265,7 @@ def _aviso_vencido(fecha_produto):
         return (
             "\n\n⚠️ *ATENÇÃO: PRODUTO VENCIDO*\n"
             f"• Vencido há {dias} dia(s)\n"
-            "Confira se a data está correta antes de guardar."
+            "O item vencido está sendo adicionado ao estoque."
         )
     return ""
 
@@ -476,8 +476,13 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ✅ Aviso si está vencido (NO bloquea)
-    aviso_vencido = _aviso_vencido(fecha_producto)
+    aviso_vencido = ""
+    if fecha_producto < datetime.now().date():
+        dias = (datetime.now().date() - fecha_producto).days
+        aviso_vencido = (
+            f"\n\n⚠️ *Produto vencido liberado em saída*\n"
+            f"• {nombre} ({_fmt_fecha(fecha_producto)}) vencido há {dias} dia(s)"
+        )
 
     # 🔹 Consultar el lote actual en stock_actual (antes de la salida)
     lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
