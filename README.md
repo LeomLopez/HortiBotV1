@@ -49,6 +49,44 @@ All of this **without requiring a dedicated app**, using a tool already familiar
 
 ---
 
+## 🔘 Button Workflow
+
+The bot includes an interactive Telegram button menu to reduce typing errors and guide the operator through the daily workflow.
+
+Main sector buttons:
+
+- 🥕 HortiFruti
+- ❄️ Frozen products
+- 📦 Dry goods
+- 🧪 Chemical stock
+- 🧻 Disposable stock
+
+Subsector and container buttons:
+
+- 🥬 Vegetables
+- 🍎 Fruits
+- 🧀 Dairy
+- 🧊 Picking
+- 📦 C1, C2, C3
+
+Action buttons available after selecting a sector:
+
+- 📦 View stock
+- 🔎 Search
+- ➕ Entry
+- ➖ Exit
+- ↩️ Return from production
+- 🔁 Move batch
+- 🛠 Adjustment
+- 📋 List expired items for discard
+- 🗑 Discard
+- ♻️ Supplier return
+- ⬅️ Back
+
+Operations entered through buttons are reviewed before saving. The operator must tap **✅ Confirm** to record the movement or **❌ Cancel** to discard the pending operation.
+
+---
+
 ## 🧠 Key Design Decisions
 
 - ❌ No automatic discarding  
