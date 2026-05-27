@@ -4,7 +4,7 @@ A **Telegram-based inventory control system** developed in **Python**, focused o
 
 More than a chatbot, this project acts as an **operational data capture layer**, generating clean and reliable data for **consumption analysis, process optimization, and future predictive models**.
 
-🇧🇷 Portuguese version: `README_PT.md`
+🇧🇷 Portuguese version: `README-PT.md`
 
 ---
 
@@ -122,7 +122,7 @@ telegram-inventory-bot/
 │ └── Manual_Bot_Estoque_Telegram.pdf
 ├── main.py
 ├── README.md
-└── README_PT.md
+└── README-PT.md
 
 ---
 
