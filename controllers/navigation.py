@@ -5,6 +5,7 @@ from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from models.db import (
+    get_db_connection,
     insertar_producto,
     obtener_lote_stock_actual,
     obtener_stock_actual,
@@ -130,6 +131,7 @@ DB_MODE_BY_FLOW_MODE = {
     "descarte": "descarte",
     "devolucion": "devolucao",
 }
+STOCK_CONSUMING_MODES = {"saida", "descarte", "devolucion"}
 
 
 def _init_user_state(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -397,14 +399,41 @@ def _parse_flow_items(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tupl
     return items, None
 
 
-def _validate_saida_stock_items(items: list[dict]) -> str | None:
+def _movement_signature(modo: str, item: dict) -> tuple:
+    return (
+        modo,
+        item.get("nome"),
+        item.get("unidade"),
+        item.get("fecha"),
+        item.get("grupo"),
+        item.get("contenedor"),
+        item.get("concepto"),
+        item.get("destino_grupo"),
+        item.get("destino_contenedor"),
+    )
+
+
+def _normalize_pending_items(modo: str, items: list[dict]) -> list[dict]:
+    normalized = []
+    index_by_signature = {}
+
+    for item in items:
+        signature = _movement_signature(modo, item)
+        if signature in index_by_signature:
+            normalized[index_by_signature[signature]]["quantidade"] += item["quantidade"]
+            continue
+
+        index_by_signature[signature] = len(normalized)
+        normalized.append(dict(item))
+
+    return normalized
+
+
+def _stock_totals_by_lot(items: list[dict]) -> dict:
     totals = {}
 
     for item in items:
         fecha_producto = _parse_fecha(item["fecha"])
-        if not fecha_producto:
-            return f"Data inválida para {item['nome']}."
-
         key = (
             item["nome"],
             item["grupo"],
@@ -414,7 +443,16 @@ def _validate_saida_stock_items(items: list[dict]) -> str | None:
         )
         totals[key] = totals.get(key, 0) + item["quantidade"]
 
+    return totals
+
+
+def _validate_stock_consuming_items(items: list[dict], action_label: str) -> str | None:
+    totals = _stock_totals_by_lot(items)
+
     for (nome, grupo, fecha_producto, contenedor, unidade), quantidade_total in totals.items():
+        if not fecha_producto:
+            return f"Data inválida para {nome}."
+
         lote = obtener_lote_stock_actual(
             nome,
             grupo,
@@ -444,21 +482,186 @@ def _validate_saida_stock_items(items: list[dict]) -> str | None:
             return (
                 f"⚠️ Estoque insuficiente para {nome}{extra} ({_format_fecha(fecha_producto)}).\n"
                 f"Estoque disponível: {quantidade_lote}{unidade_lote or unidade}\n"
-                f"Saída solicitada: {quantidade_total}{unidade}"
+                f"{action_label} solicitada: {quantidade_total}{unidade}"
+            )
+
+    return None
+
+
+def _validate_ajuste_items(items: list[dict]) -> str | None:
+    for item in items:
+        fecha_producto = _parse_fecha(item["fecha"])
+        if not fecha_producto:
+            return f"Data inválida para {item['nome']}."
+
+        lote = obtener_lote_stock_actual(
+            item["nome"],
+            item["grupo"],
+            fecha_producto,
+            item.get("contenedor"),
+            unidade=item["unidade"],
+        )
+        if not lote:
+            return (
+                "❌ Nenhum lote encontrado para ajuste.\n"
+                f"Verifique {item['nome']}, data, grupo e contêiner."
+            )
+
+        _, quantidade_lote, unidade_lote, _, _, cont_lote = lote
+        unidade_lote = (unidade_lote or "").lower()
+
+        if unidade_lote and item["unidade"] != unidade_lote:
+            return (
+                f"❌ Unidade diferente para {item['nome']}.\n"
+                f"Estoque: {unidade_lote} | Informado: {item['unidade']}"
+            )
+
+        quantidade_lote = int(quantidade_lote or 0)
+        if item.get("concepto") == "DIVG" and item["quantidade"] > quantidade_lote:
+            extra = f" ({cont_lote})" if item["grupo"] == "CON" and cont_lote and cont_lote != "N/A" else ""
+            return (
+                f"❌ Ajuste DIVG não permitido para {item['nome']}{extra}.\n"
+                f"Estoque do lote: {quantidade_lote}{unidade_lote or item['unidade']}\n"
+                f"Ajuste solicitado: {item['quantidade']}{item['unidade']}"
+            )
+
+    return None
+
+
+def _validate_mover_items(items: list[dict]) -> str | None:
+    totals = _stock_totals_by_lot(items)
+
+    for item in items:
+        if item.get("destino_grupo") == item.get("grupo") and item.get("destino_contenedor") == item.get("contenedor"):
+            return "❌ A origem e o destino devem ser diferentes."
+
+        if item.get("destino_grupo") == item.get("grupo") and item.get("grupo") != "CON":
+            return "❌ O grupo de origem e o grupo de destino devem ser diferentes."
+
+    for (nome, grupo, fecha_producto, contenedor, unidade), quantidade_total in totals.items():
+        if not fecha_producto:
+            return f"Data inválida para {nome}."
+
+        lote = obtener_lote_stock_actual(
+            nome,
+            grupo,
+            fecha_producto,
+            contenedor,
+            unidade=unidade,
+        )
+        if not lote:
+            return (
+                "❌ Lote não encontrado para mover.\n"
+                "Verifique produto, data, unidade, grupo de origem e contêiner."
+            )
+
+        _, quantidade_lote, unidade_lote, _, _, cont_lote = lote
+        unidade_lote = (unidade_lote or "").lower()
+
+        if unidade_lote and unidade != unidade_lote:
+            return (
+                f"❌ Unidade diferente para {nome}.\n"
+                f"Estoque: {unidade_lote} | Informado: {unidade}"
+            )
+
+        if int(quantidade_lote or 0) < quantidade_total:
+            extra = f" ({cont_lote})" if grupo == "CON" and cont_lote and cont_lote != "N/A" else ""
+            return (
+                f"❌ Estoque insuficiente para mover {nome}{extra}.\n"
+                f"Estoque do lote: {quantidade_lote}{unidade_lote or unidade}\n"
+                f"Quantidade solicitada: {quantidade_total}{unidade}"
             )
 
     return None
 
 
 def _validate_flow_stock(context: ContextTypes.DEFAULT_TYPE, new_items: list[dict] | None = None) -> str | None:
-    if context.user_data.get("modo") != "saida":
+    modo = context.user_data.get("modo")
+    if modo not in STOCK_CONSUMING_MODES | {"ajuste", "mover"}:
         return None
 
     items = list(context.user_data.get("pendiente", []))
     if new_items:
         items.extend(new_items)
+    items = _normalize_pending_items(modo, items)
 
-    return _validate_saida_stock_items(items)
+    if modo in STOCK_CONSUMING_MODES:
+        return _validate_stock_consuming_items(items, "Quantidade")
+
+    if modo == "ajuste":
+        return _validate_ajuste_items(items)
+
+    if modo == "mover":
+        return _validate_mover_items(items)
+
+    return None
+
+
+def _db_concept_for_item(modo: str, item: dict) -> str | None:
+    if modo == "entrada":
+        return "fornecedor"
+    return item.get("concepto")
+
+
+def _validate_duplicate_movements(modo: str, items: list[dict]) -> str | None:
+    if modo == "mover":
+        return None
+
+    tipo = DB_MODE_BY_FLOW_MODE.get(modo)
+    if not tipo:
+        return None
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        for item in items:
+            fecha_producto = _parse_fecha(item["fecha"])
+            contenedor = item.get("contenedor") if item.get("grupo") == "CON" else "N/A"
+            concepto = _db_concept_for_item(modo, item)
+
+            cursor.execute(
+                """
+                SELECT 1
+                FROM movimientos
+                WHERE nombre = %s
+                  AND tipo = %s
+                  AND fecha_producto = %s
+                  AND unidade = %s
+                  AND grupo = %s
+                  AND contenedor = %s
+                  AND concepto IS NOT DISTINCT FROM %s
+                LIMIT 1;
+                """,
+                (
+                    item["nome"],
+                    tipo,
+                    fecha_producto,
+                    item["unidade"],
+                    item["grupo"],
+                    contenedor,
+                    concepto,
+                ),
+            )
+
+            if cursor.fetchone():
+                extra = f" ({contenedor})" if item["grupo"] == "CON" else ""
+                return (
+                    f"⚠️ Movimento duplicado detectado para {item['nome']}{extra} "
+                    f"({_format_fecha(fecha_producto)}).\n"
+                    "Revise a operação antes de confirmar."
+                )
+    except Exception as exc:
+        return f"⚠️ Erro ao validar duplicados: {exc}"
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return None
 
 
 def _format_pending_review(context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -675,6 +878,9 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
         return
 
     try:
+        pending = _normalize_pending_items(modo, pending)
+        context.user_data["pendiente"] = pending
+
         stock_error = _validate_flow_stock(context)
         if stock_error:
             await update.message.reply_text(
@@ -683,8 +889,18 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
             )
             return
 
+        duplicate_error = _validate_duplicate_movements(modo, pending)
+        if duplicate_error:
+            await update.message.reply_text(
+                duplicate_error,
+                reply_markup=reply_flow_markup,
+            )
+            return
+
         for item in pending:
             fecha_producto = _parse_fecha(item["fecha"])
+            quantidade = item["quantidade"]
+            concepto = item.get("concepto")
 
             if modo == "mover":
                 registrar_transferencia(
@@ -699,15 +915,28 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
                 )
                 continue
 
+            if modo == "entrada":
+                concepto = "fornecedor"
+
+            if modo == "ajuste" and item.get("concepto") == "ERRO":
+                lote = obtener_lote_stock_actual(
+                    item["nome"],
+                    item["grupo"],
+                    fecha_producto,
+                    item.get("contenedor"),
+                    unidade=item["unidade"],
+                )
+                quantidade = int(lote[1])
+
             insertar_producto(
                 item["nome"],
-                item["quantidade"],
+                quantidade,
                 DB_MODE_BY_FLOW_MODE[modo],
                 fecha_producto,
                 item["unidade"],
                 item["grupo"],
                 item.get("contenedor"),
-                concepto=item.get("concepto"),
+                concepto=concepto,
             )
 
         total = len(pending)
@@ -941,7 +1170,10 @@ async def handle_flow_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(stock_error, reply_markup=reply_flow_markup)
         return
 
-    context.user_data["pendiente"].extend(items)
+    context.user_data["pendiente"] = _normalize_pending_items(
+        context.user_data.get("modo"),
+        [*context.user_data["pendiente"], *items],
+    )
     await update.message.reply_text(
         _format_pending_review(context),
         reply_markup=reply_flow_markup,
