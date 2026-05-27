@@ -47,6 +47,44 @@ Tudo isso **sem necessidade de aplicativo próprio**, utilizando uma ferramenta 
 
 ---
 
+## 🔘 Fluxo por botões
+
+O bot possui um menu interativo com botões no Telegram para reduzir erros de digitação e guiar a operação diária.
+
+Botões principais de setor:
+
+- 🥕 HortiFruti
+- ❄️ Congelados
+- 📦 Estoque Seco
+- 🧪 Estoque Químico
+- 🧻 Estoque Descartáveis
+
+Botões de subsetor e contêiner:
+
+- 🥬 Hortaliças
+- 🍎 Frutas
+- 🧀 Laticínios
+- 🧊 Picking
+- 📦 C1, C2, C3
+
+Botões de ação disponíveis após selecionar um setor:
+
+- 📦 Ver estoque
+- 🔎 Buscar
+- ➕ Entrada
+- ➖ Saída
+- ↩️ Volta
+- 🔁 Mover
+- 🛠 Ajuste
+- 📋 Listar descarte
+- 🗑 Descarte
+- ♻️ Devolução
+- ⬅️ Voltar
+
+As operações feitas pelos botões passam por uma revisão antes de gravar. O operador deve tocar em **✅ Confirmar** para registrar o movimento ou **❌ Cancelar** para descartar a operação pendente.
+
+---
+
 ## 🧠 Decisões de design importantes
 
 - ❌ Sem descarte automático  
