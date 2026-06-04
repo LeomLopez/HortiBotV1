@@ -635,7 +635,7 @@ def _db_concept_for_item(modo: str, item: dict) -> str | None:
 
 
 def _validate_duplicate_movements(modo: str, items: list[dict]) -> str | None:
-    if modo in {"entrada", "mover", "descarte"}:
+    if modo in {"entrada", "saida", "mover", "descarte"}:
         return None
 
     tipo = DB_MODE_BY_FLOW_MODE.get(modo)
