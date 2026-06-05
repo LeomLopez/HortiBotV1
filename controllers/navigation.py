@@ -132,6 +132,13 @@ DB_MODE_BY_FLOW_MODE = {
     "devolucion": "devolucao",
 }
 STOCK_CONSUMING_MODES = {"saida", "descarte", "devolucion"}
+OPERATION_OUTPUT_ICONS = {
+    "entrada": "📥",
+    "saida": "📤",
+    "descarte": "🗑️",
+    "devolucion": "🔄",
+    "ajuste": "🛠️",
+}
 
 
 def _init_user_state(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -427,6 +434,49 @@ def _normalize_pending_items(modo: str, items: list[dict]) -> list[dict]:
         normalized.append(dict(item))
 
     return normalized
+
+
+def _format_item_name(nome: str) -> str:
+    return (nome or "").strip().capitalize()
+
+
+def _format_item_container(item: dict) -> str:
+    contenedor = item.get("contenedor")
+    if item.get("grupo") == "CON" and contenedor:
+        return f" ({contenedor})"
+    return ""
+
+
+def _format_confirmation_line(
+    modo: str,
+    item: dict,
+    quantidade: int,
+    saldo: int | None,
+    saldo_unidade: str | None = None,
+) -> str:
+    icon = OPERATION_OUTPUT_ICONS.get(modo, "✅")
+    nome = _format_item_name(item["nome"])
+    contenedor = _format_item_container(item)
+    unidade = item["unidade"]
+    base = f"{icon} {nome}{contenedor} — {quantidade}{unidade}"
+
+    if saldo is None:
+        return f"{base} | Lote zerado."
+
+    return f"{base} | Saldo: {saldo}{saldo_unidade or unidade}"
+
+
+def _format_confirmation_message(
+    total: int,
+    result_lines: list[str],
+    warning: str = "",
+) -> str:
+    message = f"✅ Operação confirmada. {total} item(ns) gravado(s)."
+    if result_lines:
+        message = f"{message}\n\n" + "\n".join(result_lines)
+    if warning:
+        message = f"{message}\n\n{warning}"
+    return message
 
 
 def _stock_totals_by_lot(items: list[dict]) -> dict:
@@ -933,6 +983,7 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
             )
             return
 
+        result_lines = []
         for item in pending:
             fecha_producto = _parse_fecha(item["fecha"])
             quantidade = item["quantidade"]
@@ -975,12 +1026,38 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
                 concepto=concepto,
             )
 
+            lote_restante = obtener_lote_stock_actual(
+                item["nome"],
+                item["grupo"],
+                fecha_producto,
+                item.get("contenedor"),
+                unidade=item["unidade"],
+            )
+            if lote_restante:
+                _, saldo, saldo_unidade, _, _, _ = lote_restante
+                result_lines.append(
+                    _format_confirmation_line(
+                        modo,
+                        item,
+                        quantidade,
+                        int(saldo),
+                        saldo_unidade,
+                    )
+                )
+            elif modo in OPERATION_OUTPUT_ICONS:
+                result_lines.append(
+                    _format_confirmation_line(
+                        modo,
+                        item,
+                        quantidade,
+                        None,
+                    )
+                )
+
         total = len(pending)
         warning = _expired_items_warning(pending, modo) if modo in {"entrada", "saida"} else ""
         _clear_operation_context(context)
-        message = f"✅ Operação confirmada. {total} item(ns) gravado(s)."
-        if warning:
-            message = f"{message}\n\n{warning}"
+        message = _format_confirmation_message(total, result_lines, warning)
         await update.message.reply_text(
             message,
             reply_markup=reply_main_menu_markup,
