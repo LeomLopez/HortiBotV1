@@ -1,5 +1,0 @@
-ALTER TABLE movimientos
-DROP CONSTRAINT IF EXISTS movimientos_nombre_tipo_fecha_producto_unidade_grupo_contened_key;
-
-ALTER TABLE movimientos
-DROP CONSTRAINT IF EXISTS movimientos_nombre_tipo_fecha_producto_unidade_grupo_contenedor_concepto_key;

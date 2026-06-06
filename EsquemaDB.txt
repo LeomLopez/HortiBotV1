@@ -1,0 +1,123 @@
+ESQUEMA DE BASE DE DATOS
+
+Proyecto: Bot de Estoque
+Motor: PostgreSQL (Neon)
+Tablas activas: movimientos, stock_actual
+
+============================================================
+1. Tabla: movimientos
+============================================================
+
+Proposito:
+Guarda el historico completo de todos los movimientos de inventario.
+Es una tabla de auditoria/eventos: los registros no se actualizan ni se
+eliminan durante la operacion normal del sistema.
+
+Columnas:
+- id: integer, PRIMARY KEY
+- nombre: varchar(255), NOT NULL
+- cantidad: integer, NOT NULL
+- tipo: varchar/text, NOT NULL
+  Valores usados por el sistema:
+  entrada, saida, volta, transferencia_saida, transferencia_entrada,
+  descarte, devolucao, ajuste
+- fecha_producto: date, NOT NULL
+- unidade: varchar, nullable
+- grupo: varchar, nullable
+  Valores permitidos:
+  HOR, FRU, LAC, CON, SEC, QUI, DES
+- contenedor: varchar, nullable
+  Para grupo CON:
+  PICK, C1, C2, C3
+  Para otros grupos:
+  N/A
+- concepto: varchar, nullable
+- fecha_movimiento: timestamp, DEFAULT CURRENT_TIMESTAMP
+
+Constraints principales:
+- productos_pkey:
+  PRIMARY KEY (id)
+- chk_mov_grupo:
+  grupo debe estar dentro de HOR, FRU, LAC, CON, SEC, QUI, DES
+- chk_mov_contenedor:
+  si grupo = CON, contenedor debe ser PICK, C1, C2 o C3
+  si grupo <> CON, contenedor debe ser N/A
+
+Nota importante:
+La tabla movimientos permite registros repetidos. No debe tener UNIQUE por
+nombre, tipo, fecha_producto, unidade, grupo, contenedor o concepto, porque
+dos operaciones iguales en momentos distintos deben quedar registradas como
+eventos independientes.
+
+============================================================
+2. Tabla: stock_actual
+============================================================
+
+Proposito:
+Representa el estado actual consolidado del inventario.
+Solo contiene lotes con cantidad mayor a 0.
+
+Columnas:
+- nombre: varchar, NOT NULL
+- unidade: varchar, NOT NULL
+- grupo: varchar, NOT NULL
+- fecha_producto: date, NOT NULL
+- contenedor: varchar, NOT NULL
+- cantidad: integer, NOT NULL DEFAULT 0
+
+Clave primaria compuesta:
+PRIMARY KEY (nombre, unidade, grupo, fecha_producto, contenedor)
+
+Esto permite:
+- Separar lotes por producto
+- Separar lotes por unidad
+- Separar lotes por fecha de vencimiento
+- Separar congelados por contenedor, incluyendo PICK
+- Usar ON CONFLICT para sumar cantidades sobre el lote existente
+
+Constraints principales:
+- chk_stock_contenedor:
+  si grupo = CON, contenedor debe ser PICK, C1, C2 o C3
+  si grupo <> CON, contenedor debe ser N/A
+
+============================================================
+3. Modelo conceptual
+============================================================
+
+Un lote queda identificado por:
+nombre + unidade + grupo + fecha_producto + contenedor
+
+movimientos:
+Historico completo de eventos. Puede tener movimientos repetidos.
+
+stock_actual:
+Estado materializado del stock actual. Consolida cantidades por lote.
+
+============================================================
+4. Flujo general
+============================================================
+
+1. Se inserta un evento en movimientos.
+2. Se actualiza stock_actual sumando o restando la cantidad.
+3. Si un lote queda con cantidad menor o igual a 0, se elimina de stock_actual.
+
+Entradas que suman stock:
+- entrada
+- volta
+- transferencia_entrada
+
+Movimientos que restan stock:
+- saida
+- descarte
+- devolucao
+- transferencia_saida
+
+============================================================
+5. Cambios recientes aplicados
+============================================================
+
+- Se agrego PICK como contenedor valido para congelados.
+- Se quitaron constraints UNIQUE de movimientos para permitir operaciones
+  repetidas en el historico.
+- Los scripts SQL temporales usados para aplicar esos cambios fueron
+  eliminados de la carpeta docs.
