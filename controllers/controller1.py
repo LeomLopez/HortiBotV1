@@ -2,6 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido, registrar_transferencia
+from models.validation import is_valid_unidade, normalize_unidade
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha, mensaje_por_fecha_from_tuples, mensaje_order_from_tuples
@@ -115,7 +116,9 @@ def parse_args(update: Update, requiere_fecha=False):
             except ValueError:
                 return None, None, None, None, None
 
-            unidad = cant_unid[1].lower()
+            unidad = normalize_unidade(cant_unid[1])
+            if not is_valid_unidade(unidad):
+                return None, None, None, None, None
             nombre = partes[1].strip().lower()
 
             # ✅ usar tu parser flexible (dd/mm | dd/mm/yy | dd/mm/yyyy)
@@ -158,7 +161,9 @@ def parse_mover_args(update: Update):
         except ValueError:
             return None
 
-        unidade = cant_unid[1].lower()
+        unidade = normalize_unidade(cant_unid[1])
+        if not is_valid_unidade(unidade):
+            return None
         nombre = partes[1].lower()
         fecha_producto = parse_fecha_flexible(partes[2])
         grupo_origen = partes[3].upper()

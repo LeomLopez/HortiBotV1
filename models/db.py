@@ -1,6 +1,7 @@
 import psycopg2
 from config.config import DATABASE_URL
 from datetime import datetime
+from models.validation import is_valid_unidade, normalize_unidade, unidade_error_message
 
 # ----------------------------
 # Conexión a la base de datos
@@ -64,7 +65,9 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     # Normalización básica
     if nombre: nombre = nombre.lower().strip()
     if tipo: tipo = tipo.lower().strip()
-    if unidade: unidade = unidade.lower().strip()
+    unidade = normalize_unidade(unidade)
+    if not is_valid_unidade(unidade):
+        raise ValueError(unidade_error_message())
     if grupo: grupo = grupo.upper().strip()
 
     # Normalizar concepto (área)
@@ -222,7 +225,9 @@ def registrar_transferencia(
     cursor = conn.cursor()
 
     if nombre: nombre = nombre.lower().strip()
-    if unidade: unidade = unidade.lower().strip()
+    unidade = normalize_unidade(unidade)
+    if not is_valid_unidade(unidade):
+        raise ValueError(unidade_error_message())
     if grupo_origen: grupo_origen = grupo_origen.upper().strip()
     if grupo_destino: grupo_destino = grupo_destino.upper().strip()
 

@@ -12,6 +12,7 @@ from models.db import (
     obtener_stock_vencido,
     registrar_transferencia,
 )
+from models.validation import is_valid_unidade, normalize_unidade, unidade_error_message
 from views.formatters import mensaje_por_fecha_from_tuples
 
 
@@ -308,6 +309,10 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
         fecha_raw = tokens[date_index]
         extras = tokens[date_index + 1:]
 
+    unidade = normalize_unidade(unidade)
+    if not is_valid_unidade(unidade):
+        return None, unidade_error_message()
+
     try:
         quantidade = int(quantity_raw)
     except ValueError:
@@ -322,7 +327,7 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
     item = {
         "nome": nome.lower().strip(),
         "quantidade": quantidade,
-        "unidade": unidade.lower().strip(),
+        "unidade": unidade,
         "fecha": fecha_raw,
         "grupo": grupo,
         "contenedor": contenedor,
