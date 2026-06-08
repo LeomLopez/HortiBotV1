@@ -804,6 +804,13 @@ async def _send_operation_reply_prompt(
     )
 
 
+async def _send_sector_actions_for_context(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        f"Setor ativo: {_context_label(context)}\n\nEscolha uma ação.",
+        reply_markup=reply_sector_actions_markup,
+    )
+
+
 async def _send_stock_for_context(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _init_user_state(context)
     grupo = context.user_data.get("grupo")
@@ -1157,7 +1164,7 @@ async def handle_reply_main_menu(update: Update, context: ContextTypes.DEFAULT_T
     if sector:
         grupo, contenedor = sector
         _set_sector_context(context, grupo, contenedor)
-        await _send_stock_for_context(update, context)
+        await _send_sector_actions_for_context(update, context)
 
 
 async def handle_reply_horti_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1182,7 +1189,7 @@ async def handle_reply_horti_menu(update: Update, context: ContextTypes.DEFAULT_
 
     grupo, contenedor = sector
     _set_sector_context(context, grupo, contenedor)
-    await _send_stock_for_context(update, context)
+    await _send_sector_actions_for_context(update, context)
 
 
 async def handle_reply_congelados_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1207,7 +1214,7 @@ async def handle_reply_congelados_menu(update: Update, context: ContextTypes.DEF
 
     grupo, contenedor = sector
     _set_sector_context(context, grupo, contenedor)
-    await _send_stock_for_context(update, context)
+    await _send_sector_actions_for_context(update, context)
 
 
 async def handle_reply_sector_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
