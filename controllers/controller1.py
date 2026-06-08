@@ -24,6 +24,8 @@ GRUPOS_MAP = {
 GRUPOS_VALIDOS = set(GRUPOS_MAP.keys())
 
 AREAS_VALIDAS = {"alm": "Almoço", "jan": "Janta", "cof": "Coffee", "kit": "Kit Lanche"}
+BAG_TO_KG = 2
+CONGELADOS_INPUT_UNITS = {"kg", "bag"}
 
 
 # Teclado personalizado
@@ -87,6 +89,22 @@ def parse_fecha_flexible(fecha_str: str) -> date | None:
     except ValueError:
         return None
 
+
+def _convert_congelados_unit(unidade: str, quantidade: int, grupo: str):
+    if grupo == "CON" and unidade not in CONGELADOS_INPUT_UNITS:
+        return None
+
+    if unidade == "bag":
+        if grupo != "CON":
+            return None
+        return "kg", quantidade * BAG_TO_KG
+
+    if not is_valid_unidade(unidade):
+        return None
+
+    return unidade, quantidade
+
+
 def parse_args(update: Update, requiere_fecha=False):
     """
     Parsea mensaje en formato:
@@ -116,9 +134,6 @@ def parse_args(update: Update, requiere_fecha=False):
             except ValueError:
                 return None, None, None, None, None
 
-            unidad = normalize_unidade(cant_unid[1])
-            if not is_valid_unidade(unidad):
-                return None, None, None, None, None
             nombre = partes[1].strip().lower()
 
             # ✅ usar tu parser flexible (dd/mm | dd/mm/yy | dd/mm/yyyy)
@@ -127,6 +142,11 @@ def parse_args(update: Update, requiere_fecha=False):
                 return None, None, None, None, None
 
             grupo = partes[3].strip().upper()
+            unidad = normalize_unidade(cant_unid[1])
+            converted = _convert_congelados_unit(unidad, cantidad, grupo)
+            if not converted:
+                return None, None, None, None, None
+            unidad, cantidad = converted
 
             return nombre, cantidad, unidad, fecha_producto, grupo
 
@@ -161,9 +181,6 @@ def parse_mover_args(update: Update):
         except ValueError:
             return None
 
-        unidade = normalize_unidade(cant_unid[1])
-        if not is_valid_unidade(unidade):
-            return None
         nombre = partes[1].lower()
         fecha_producto = parse_fecha_flexible(partes[2])
         grupo_origen = partes[3].upper()
@@ -173,6 +190,12 @@ def parse_mover_args(update: Update):
 
         if not fecha_producto:
             return None
+
+        unidade = normalize_unidade(cant_unid[1])
+        converted = _convert_congelados_unit(unidade, cantidad, grupo_origen)
+        if not converted:
+            return None
+        unidade, cantidad = converted
 
         if grupo_origen == "CON":
             if len(partes) < 6:
@@ -318,6 +341,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 - Congelados (com contêiner):
 `/entrada 10 kg, frango, 30/07, CON, C1`
+`/entrada 5 bag, arroz integral, 30/07, CON, C1`
 
 *➤ Saída de produtos*
 - HortiFruti / Laticínios / Outros:
@@ -325,6 +349,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 - Congelados (com contêiner + área):
 `/saida 3 kg, frango, 30/07, CON, C1, alm`
+`/saida 2 bag, arroz integral, 30/07, CON, C1, alm`
 
 *➤ Volta de produção (retorno)*
 - HortiFruti / Laticínios / Outros:
@@ -332,6 +357,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 - Congelados (com contêiner + área):
 `/volta 2 kg, frango, 30/07, CON, C1, alm`
+`/volta 1 bag, arroz integral, 30/07, CON, C1, alm`
 
 *➤ Corrigir grupo*
 - Não congelados:
@@ -339,6 +365,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 - Com congelados:
 `/mover 10 kg, frango, 07/05, CON, C1, FRU`
+`/mover 5 bag, arroz integral, 07/05, CON, C1, SEC`
 `/mover 10 kg, frango, 07/05, HOR, CON, C2`
 
 *➤ Outros comandos*

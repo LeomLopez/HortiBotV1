@@ -133,6 +133,8 @@ DB_MODE_BY_FLOW_MODE = {
     "devolucion": "devolucao",
 }
 STOCK_CONSUMING_MODES = {"saida", "descarte", "devolucion"}
+BAG_TO_KG = 2
+CONGELADOS_INPUT_UNITS = {"kg", "bag"}
 OPERATION_OUTPUT_ICONS = {
     "entrada": "📥",
     "saida": "📤",
@@ -211,10 +213,31 @@ def _format_fecha(fecha) -> str:
     return fecha.strftime("%d/%m/%Y")
 
 
+def _apply_congelados_unit_conversion(
+    unidade: str,
+    quantidade: int,
+    grupo: str,
+) -> tuple[str, int, int | None, str | None]:
+    if grupo == "CON" and unidade not in CONGELADOS_INPUT_UNITS:
+        raise ValueError("Para Congelados, use apenas kg ou bag.")
+
+    if unidade != "bag":
+        if not is_valid_unidade(unidade):
+            raise ValueError(unidade_error_message())
+        return unidade, quantidade, None, None
+
+    if grupo != "CON":
+        raise ValueError("A unidade bag só pode ser usada em Congelados.")
+
+    return "kg", quantidade * BAG_TO_KG, quantidade, "bag"
+
+
 def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     _init_user_state(context)
     modo = context.user_data.get("modo")
+    grupo = context.user_data.get("grupo")
     base = f"Modo ativo: {modo}\nContexto: {_context_label(context)}"
+    unit_hint = "\nPara Congelados, use kg ou bag. 1 bag = 2 kg." if grupo == "CON" else ""
 
     if modo == "buscar":
         return f"{base}\nDigite o produto que deseja buscar."
@@ -226,6 +249,7 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             "Exemplos:\n"
             "5 kg tomate 30/07 alm\n"
             "3 kg cenoura 31/07 jan"
+            f"{unit_hint}"
         )
 
     if modo == "mover":
@@ -236,6 +260,7 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             "5 kg tomate 30/07 FRU\n"
             "5 kg frango 30/07 CON C2\n"
             "35 kg carne 23/11 CON PICK"
+            f"{unit_hint}"
         )
 
     if modo == "ajuste":
@@ -243,10 +268,11 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             f"{base}\n"
             "Digite um item por mensagem, incluindo o conceito ERRO ou DIVG.\n"
             "Exemplo: 3 kg tomate 30/07 ERRO"
+            f"{unit_hint}"
         )
 
     if modo == "volta":
-        return f"{base}\nDigite um item por mensagem.\nExemplo: 5 kg tomate 30/07 alm"
+        return f"{base}\nDigite um item por mensagem.\nExemplo: 5 kg tomate 30/07 alm{unit_hint}"
 
     if modo in {"entrada", "descarte"}:
         return (
@@ -255,9 +281,10 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             "Exemplos:\n"
             "20 kg tomate 30/07\n"
             "15 kg cenoura 31/07"
+            f"{unit_hint}"
         )
 
-    return f"{base}\nDigite um item por mensagem.\nExemplo: 20 kg tomate 30/07"
+    return f"{base}\nDigite um item por mensagem.\nExemplo: 20 kg tomate 30/07{unit_hint}"
 
 
 def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple[dict | None, str | None]:
@@ -310,8 +337,6 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
         extras = tokens[date_index + 1:]
 
     unidade = normalize_unidade(unidade)
-    if not is_valid_unidade(unidade):
-        return None, unidade_error_message()
 
     try:
         quantidade = int(quantity_raw)
@@ -320,6 +345,15 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
 
     if quantidade <= 0:
         return None, "A quantidade deve ser maior que zero."
+
+    try:
+        unidade, quantidade, input_quantidade, input_unidade = _apply_congelados_unit_conversion(
+            unidade,
+            quantidade,
+            grupo,
+        )
+    except ValueError as exc:
+        return None, str(exc)
 
     if not _parse_fecha(fecha_raw):
         return None, "Data inválida. Use dd/mm, dd/mm/aa ou dd/mm/aaaa."
@@ -332,6 +366,9 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
         "grupo": grupo,
         "contenedor": contenedor,
     }
+    if input_quantidade is not None:
+        item["input_quantidade"] = input_quantidade
+        item["input_unidade"] = input_unidade
 
     if modo in {"saida", "volta"}:
         if not extras:
@@ -432,7 +469,13 @@ def _normalize_pending_items(modo: str, items: list[dict]) -> list[dict]:
     for item in items:
         signature = _movement_signature(modo, item)
         if signature in index_by_signature:
-            normalized[index_by_signature[signature]]["quantidade"] += item["quantidade"]
+            existing = normalized[index_by_signature[signature]]
+            existing["quantidade"] += item["quantidade"]
+            if existing.get("input_unidade") == "bag" and item.get("input_unidade") == "bag":
+                existing["input_quantidade"] += item["input_quantidade"]
+            else:
+                existing.pop("input_quantidade", None)
+                existing.pop("input_unidade", None)
             continue
 
         index_by_signature[signature] = len(normalized)
@@ -443,6 +486,21 @@ def _normalize_pending_items(modo: str, items: list[dict]) -> list[dict]:
 
 def _format_item_name(nome: str) -> str:
     return (nome or "").strip().capitalize()
+
+
+def _format_quantity_with_input(item: dict, quantidade: int | None = None) -> str:
+    quantidade = item["quantidade"] if quantidade is None else quantidade
+    unidade = item["unidade"]
+    text = f"{quantidade}{unidade}"
+
+    if (
+        item.get("input_unidade") == "bag"
+        and item.get("input_quantidade") is not None
+        and quantidade == item.get("quantidade")
+    ):
+        text = f"{text} ({item['input_quantidade']} bag)"
+
+    return text
 
 
 def _format_item_container(item: dict) -> str:
@@ -462,8 +520,8 @@ def _format_confirmation_line(
     icon = OPERATION_OUTPUT_ICONS.get(modo, "✅")
     nome = _format_item_name(item["nome"])
     contenedor = _format_item_container(item)
-    unidade = item["unidade"]
-    base = f"{icon} {nome}{contenedor} — {quantidade}{unidade}"
+    unidade = saldo_unidade or item["unidade"]
+    base = f"{icon} {nome}{contenedor} — {_format_quantity_with_input(item, quantidade)}"
 
     if saldo is None:
         return f"{base} | Lote zerado."
@@ -771,7 +829,7 @@ def _format_pending_review(context: ContextTypes.DEFAULT_TYPE) -> str:
                 destino = f"{destino} / {item['destino_contenedor']}"
             extra = f" • destino: {destino}"
         lines.append(
-            f"{index}. {item['nome']} — {item['quantidade']}{item['unidade']} "
+            f"{index}. {item['nome']} — {_format_quantity_with_input(item)} "
             f"({item['fecha']}){extra}"
         )
 
