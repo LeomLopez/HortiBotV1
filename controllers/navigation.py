@@ -266,8 +266,10 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     if modo == "ajuste":
         return (
             f"{base}\n"
-            "Digite um item por mensagem, incluindo o conceito ERRO ou DIVG.\n"
-            "Exemplo: 3 kg tomate 30/07 ERRO"
+            "Digite um ou vários itens, incluindo o conceito ERRO ou DIVG.\n"
+            "Exemplos:\n"
+            "3 kg tomate 30/07 ERRO\n"
+            "2 kg cenoura 31/07 DIVG"
             f"{unit_hint}"
         )
 
@@ -423,7 +425,7 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
 
 
 def _split_flow_entries(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
-    if context.user_data.get("modo") not in {"entrada", "saida", "descarte"}:
+    if context.user_data.get("modo") not in {"entrada", "saida", "descarte", "ajuste"}:
         return [(raw_text or "").strip()]
 
     return [
@@ -633,6 +635,27 @@ def _expired_items_warning(items: list[dict], modo: str) -> str:
 
 
 def _validate_ajuste_items(items: list[dict]) -> str | None:
+    concepts_by_lot = {}
+    for item in items:
+        fecha_producto = _parse_fecha(item["fecha"])
+        key = (
+            item["nome"],
+            item["grupo"],
+            fecha_producto,
+            item.get("contenedor"),
+            item["unidade"],
+        )
+        concepts_by_lot.setdefault(key, set()).add(item.get("concepto"))
+
+    for (nome, grupo, fecha_producto, contenedor, unidade), concepts in concepts_by_lot.items():
+        if len(concepts) > 1:
+            extra = f" ({contenedor})" if grupo == "CON" and contenedor else ""
+            fecha = _format_fecha(fecha_producto) if fecha_producto else "-"
+            return (
+                f"❌ Ajuste inválido para {nome}{extra} ({fecha}).\n"
+                "Não misture ERRO e DIVG no mesmo lote."
+            )
+
     for item in items:
         fecha_producto = _parse_fecha(item["fecha"])
         if not fecha_producto:
