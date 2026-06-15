@@ -4,3 +4,4 @@ pandas
 hupper
 python-dotenv
 psycopg2-binary
+openai-whisper

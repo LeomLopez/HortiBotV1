@@ -3,6 +3,7 @@ import re
 from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from config.config import BOT_TOKEN
+from controllers.ai_assistant import ai_hortifruti, ai_hortifruti_voice
 from controllers.controller1 import entrada, saida, volta, estoque, vencimentos, devolucao, movimentacoes,estoque_congelados, buscar, descarte, estoque_secos, estoque_quimicos, estoque_descartaveis, descarte_vencidos, ajuste, mover
 from controllers.navigation import (
     REPLY_CONGELADOS_SECTORS,
@@ -23,6 +24,7 @@ from controllers.navigation import (
 # Define comandos visibles en el menú
 BOT_COMMANDS = [
     BotCommand("start", "Iniciar o bot"),
+    BotCommand("ai", "Perguntar ao assistente local sobre Hortifruti"),
     BotCommand("buscar", "Buscar produtos no estoque"),
     BotCommand("entrada", "Registrar uma entrada de produto"),
     BotCommand("saida", "Registrar uma saída de produto"),
@@ -54,6 +56,8 @@ application = ApplicationBuilder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start_navigation))
 application.add_handler(CommandHandler("menu", show_main_menu))
 application.add_handler(CommandHandler("menu_teclado", show_reply_main_menu))
+application.add_handler(CommandHandler("ai", ai_hortifruti))
+application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, ai_hortifruti_voice))
 application.add_handler(CommandHandler("buscar", buscar))
 application.add_handler(CommandHandler("entrada", entrada))
 application.add_handler(CommandHandler("saida", saida))
