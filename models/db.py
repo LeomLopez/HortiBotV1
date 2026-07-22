@@ -1,7 +1,12 @@
 import psycopg2
 from config.config import DATABASE_URL
 from datetime import datetime
-from models.validation import is_valid_unidade, normalize_unidade, unidade_error_message
+from models.validation import (
+    is_valid_unidade,
+    normalize_product_name,
+    normalize_unidade,
+    unidade_error_message,
+)
 
 # ----------------------------
 # Conexión a la base de datos
@@ -59,11 +64,14 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
     - 'movimientos': histórico (no borra nada).
     - 'stock_actual': estado actual (suma/resta y elimina cuando cantidad <= 0).
     """
+    # Normalización obligatoria en la frontera de persistencia
+    nombre = normalize_product_name(nombre)
+    if not nombre:
+        raise ValueError("Nome do produto inválido.")
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Normalización básica
-    if nombre: nombre = nombre.lower().strip()
     if tipo: tipo = tipo.lower().strip()
     unidade = normalize_unidade(unidade)
     if not is_valid_unidade(unidade):
@@ -72,7 +80,7 @@ def insertar_producto(nombre, cantidad, tipo, fecha_producto, unidade, grupo, co
 
     # Normalizar concepto (área)
     if concepto is not None:
-        concepto = str(concepto).strip().lower()
+        concepto = normalize_product_name(concepto)
         if concepto == "":
             concepto = None
 
@@ -121,6 +129,7 @@ def obtener_productos(nombre=None):
     cursor = conn.cursor()
 
     if nombre:
+        nombre = normalize_product_name(nombre)
         cursor.execute("""
             SELECT id, nombre, cantidad, tipo, fecha_producto, unidade, grupo, fecha_movimiento
             FROM movimientos
@@ -161,7 +170,7 @@ def obtener_stock_actual(grupo=None, nombre=None):
         params.append(grupo.upper())
     if nombre:
         query += " AND nombre = %s"
-        params.append(nombre.lower())
+        params.append(normalize_product_name(nombre))
 
     query += " ORDER BY grupo, fecha_producto"
 
@@ -221,10 +230,13 @@ def registrar_transferencia(
     - transferencia_saida resta del grupo origen
     - transferencia_entrada suma al grupo destino
     """
+    nombre = normalize_product_name(nombre)
+    if not nombre:
+        raise ValueError("Nome do produto inválido.")
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    if nombre: nombre = nombre.lower().strip()
     unidade = normalize_unidade(unidade)
     if not is_valid_unidade(unidade):
         raise ValueError(unidade_error_message())
@@ -312,7 +324,7 @@ def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None, un
           AND fecha_producto = %s
     """
     params = [
-        (nombre or "").lower().strip(),
+        normalize_product_name(nombre),
         (grupo or "").upper().strip(),
         fecha_producto,
     ]
@@ -323,7 +335,7 @@ def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None, un
 
     if unidade:
         sql += " AND unidade = %s"
-        params.append(unidade.lower().strip())
+        params.append(normalize_unidade(unidade))
 
     cursor.execute(sql, params)
     row = cursor.fetchone()
@@ -364,7 +376,7 @@ def search_productos(conn, query, limit=50, grupo=None):
     Busca por 1+ palabras en productos.nombre y devuelve producto + grupo (stock),
     ordenado por similaridad. Si 'grupo' viene, filtra por ese grupo.
     """
-    q = (query or "").strip().lower()
+    q = normalize_product_name(query)
     if not q:
         return []
 

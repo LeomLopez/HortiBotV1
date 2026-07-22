@@ -1,4 +1,5 @@
 import unicodedata
+import re
 
 
 VALID_UNITS = {"kg", "unid"}
@@ -9,12 +10,20 @@ def _strip_accents(value: str) -> str:
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
-def normalize_unidade(unidade: str | None) -> str:
-    raw = str(unidade or "").strip().lower()
+def normalize_text(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
     if not raw:
         return ""
 
-    return _strip_accents(raw)
+    return re.sub(r"\s+", " ", _strip_accents(raw)).strip()
+
+
+def normalize_product_name(nombre: str | None) -> str:
+    return normalize_text(nombre)
+
+
+def normalize_unidade(unidade: str | None) -> str:
+    return normalize_text(unidade)
 
 
 def is_valid_unidade(unidade: str | None) -> bool:
