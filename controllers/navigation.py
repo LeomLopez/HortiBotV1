@@ -6,11 +6,10 @@ from telegram.ext import ContextTypes
 
 from models.db import (
     get_db_connection,
-    insertar_producto,
     obtener_lote_stock_actual,
     obtener_stock_actual,
     obtener_stock_vencido,
-    registrar_transferencia,
+    registrar_operacion_lote,
 )
 from models.validation import (
     is_valid_unidade,
@@ -139,7 +138,7 @@ DB_MODE_BY_FLOW_MODE = {
 }
 STOCK_CONSUMING_MODES = {"saida", "descarte", "devolucion"}
 BAG_TO_KG = 2
-CONGELADOS_INPUT_UNITS = {"kg", "bag"}
+CONGELADOS_INPUT_UNITS = {"kg", "bag", "unid"}
 OPERATION_OUTPUT_ICONS = {
     "entrada": "📥",
     "saida": "📤",
@@ -224,7 +223,7 @@ def _apply_congelados_unit_conversion(
     grupo: str,
 ) -> tuple[str, int, int | None, str | None]:
     if grupo == "CON" and unidade not in CONGELADOS_INPUT_UNITS:
-        raise ValueError("Para Congelados, use apenas kg ou bag.")
+        raise ValueError("Para Congelados, use apenas kg, bag ou unid.")
 
     if unidade != "bag":
         if not is_valid_unidade(unidade):
@@ -242,7 +241,7 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     modo = context.user_data.get("modo")
     grupo = context.user_data.get("grupo")
     base = f"Modo ativo: {modo}\nContexto: {_context_label(context)}"
-    unit_hint = "\nPara Congelados, use kg ou bag. 1 bag = 2 kg." if grupo == "CON" else ""
+    unit_hint = "\nPara Congelados, use kg, bag ou unid. 1 bag = 2 kg." if grupo == "CON" else ""
 
     if modo == "buscar":
         return f"{base}\nDigite o produto que deseja buscar."
@@ -260,7 +259,7 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     if modo == "mover":
         return (
             f"{base}\n"
-            "Digite quantidade, unidade, produto, data e destino.\n"
+            "Digite um ou vários itens com quantidade, unidade, produto, data e destino.\n"
             "Exemplos:\n"
             "5 kg tomate 30/07 FRU\n"
             "5 kg frango 30/07 CON C2\n"
@@ -279,7 +278,10 @@ def _operation_prompt_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         )
 
     if modo == "volta":
-        return f"{base}\nDigite um item por mensagem.\nExemplo: 5 kg tomate 30/07 alm{unit_hint}"
+        return (
+            f"{base}\nDigite um ou vários itens, um por linha ou separados por ';'.\n"
+            f"Exemplo: 5 kg tomate 30/07 alm{unit_hint}"
+        )
 
     if modo in {"entrada", "descarte"}:
         return (
@@ -430,7 +432,7 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
 
 
 def _split_flow_entries(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
-    if context.user_data.get("modo") not in {"entrada", "saida", "descarte", "ajuste"}:
+    if context.user_data.get("modo") not in {"entrada", "saida", "descarte", "ajuste", "volta", "mover"}:
         return [(raw_text or "").strip()]
 
     return [
@@ -449,7 +451,7 @@ def _parse_flow_items(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tupl
     for index, entry in enumerate(entries, start=1):
         item, error = _parse_flow_item(entry, context)
         if error:
-            return [], f"Item {index}: {error}"
+            return [], f"❌ Item {index} inválido:\n{error}"
         items.append(item)
 
     return items, None
@@ -776,7 +778,7 @@ def _db_concept_for_item(modo: str, item: dict) -> str | None:
 
 
 def _validate_duplicate_movements(modo: str, items: list[dict]) -> str | None:
-    if modo in {"entrada", "saida", "mover", "descarte"}:
+    if modo in {"entrada", "saida", "volta", "mover", "descarte"}:
         return None
 
     tipo = DB_MODE_BY_FLOW_MODE.get(modo)
@@ -852,10 +854,10 @@ def _format_pending_review(context: ContextTypes.DEFAULT_TYPE) -> str:
         if item.get("concepto"):
             extra = f" • {item['concepto']}"
         if item.get("destino_grupo"):
-            destino = GROUP_LABELS.get(item["destino_grupo"], item["destino_grupo"])
+            destino = item["destino_grupo"]
             if item.get("destino_contenedor"):
-                destino = f"{destino} / {item['destino_contenedor']}"
-            extra = f" • destino: {destino}"
+                destino = f"{destino}/{item['destino_contenedor']}"
+            extra = f" → {destino}"
         lines.append(
             f"{index}. {item['nome']} — {_format_quantity_with_input(item)} "
             f"({item['fecha']}){extra}"
@@ -1081,24 +1083,11 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
             )
             return
 
-        result_lines = []
+        db_items = []
         for item in pending:
             fecha_producto = _parse_fecha(item["fecha"])
             quantidade = item["quantidade"]
             concepto = item.get("concepto")
-
-            if modo == "mover":
-                registrar_transferencia(
-                    nombre=item["nome"],
-                    cantidad=item["quantidade"],
-                    fecha_producto=fecha_producto,
-                    unidade=item["unidade"],
-                    grupo_origen=item["grupo"],
-                    grupo_destino=item["destino_grupo"],
-                    contenedor_origen=item.get("contenedor"),
-                    contenedor_destino=item.get("destino_contenedor"),
-                )
-                continue
 
             if modo == "entrada":
                 concepto = "fornecedor"
@@ -1113,21 +1102,41 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
                 )
                 quantidade = int(lote[1])
 
-            insertar_producto(
-                item["nome"],
-                quantidade,
-                DB_MODE_BY_FLOW_MODE[modo],
-                fecha_producto,
-                item["unidade"],
-                item["grupo"],
-                item.get("contenedor"),
-                concepto=concepto,
-            )
+            db_item = dict(item)
+            db_item["quantidade"] = quantidade
+            db_item["fecha_producto"] = fecha_producto
+            db_item["concepto"] = concepto
+            if modo != "mover":
+                db_item["tipo"] = DB_MODE_BY_FLOW_MODE[modo]
+            db_items.append(db_item)
+
+        registrar_operacion_lote(modo, db_items)
+
+        result_lines = []
+        for item, db_item in zip(pending, db_items):
+            quantidade = db_item["quantidade"]
+            if modo == "mover":
+                lote_destino = obtener_lote_stock_actual(
+                    item["nome"],
+                    item["destino_grupo"],
+                    db_item["fecha_producto"],
+                    item.get("destino_contenedor"),
+                    unidade=item["unidade"],
+                )
+                saldo = int(lote_destino[1]) if lote_destino else 0
+                destino = item["destino_grupo"]
+                if item.get("destino_contenedor"):
+                    destino = f"{destino}/{item['destino_contenedor']}"
+                result_lines.append(
+                    f"🔁 {_format_item_name(item['nome'])} — "
+                    f"{quantidade}{item['unidade']} → {destino} | Saldo destino: {saldo}{item['unidade']}"
+                )
+                continue
 
             lote_restante = obtener_lote_stock_actual(
                 item["nome"],
                 item["grupo"],
-                fecha_producto,
+                db_item["fecha_producto"],
                 item.get("contenedor"),
                 unidade=item["unidade"],
             )
@@ -1161,10 +1170,11 @@ async def _confirm_pending_operation(update: Update, context: ContextTypes.DEFAU
             reply_markup=reply_main_menu_markup,
         )
     except Exception as exc:
+        _clear_operation_context(context)
         await update.message.reply_text(
             f"⚠️ Erro ao confirmar operação: {exc}\n"
-            "A operação foi mantida em andamento para revisão ou cancelamento.",
-            reply_markup=reply_flow_markup,
+            "A operação completa foi cancelada e nenhum item foi gravado.",
+            reply_markup=reply_main_menu_markup,
         )
 
 
@@ -1375,6 +1385,13 @@ async def handle_flow_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _send_search_for_context(update, context, update.message.text)
         return
 
+    modo = context.user_data.get("modo")
+    replace_pending = modo in {"volta", "mover"}
+    if replace_pending:
+        # Volta e Mover representam um lote completo por mensagem. Uma nova
+        # tentativa nunca deve herdar itens da revisão anterior.
+        context.user_data["pendiente"] = []
+
     items, error = _parse_flow_items(update.message.text, context)
     if error:
         await update.message.reply_text(error, reply_markup=reply_flow_markup)
@@ -1386,8 +1403,8 @@ async def handle_flow_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data["pendiente"] = _normalize_pending_items(
-        context.user_data.get("modo"),
-        [*context.user_data["pendiente"], *items],
+        modo,
+        items if replace_pending else [*context.user_data["pendiente"], *items],
     )
     await update.message.reply_text(
         _format_pending_review(context),
