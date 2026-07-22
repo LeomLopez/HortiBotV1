@@ -12,7 +12,12 @@ from models.db import (
     obtener_stock_vencido,
     registrar_transferencia,
 )
-from models.validation import is_valid_unidade, normalize_unidade, unidade_error_message
+from models.validation import (
+    is_valid_unidade,
+    normalize_product_name,
+    normalize_unidade,
+    unidade_error_message,
+)
 from views.formatters import mensaje_por_fecha_from_tuples
 
 
@@ -300,7 +305,7 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
         return None, "Digite os dados do item."
 
     if modo == "buscar":
-        return {"nome": text}, None
+        return {"nome": normalize_product_name(text)}, None
 
     if not grupo:
         return None, "Selecione um setor antes de adicionar itens."
@@ -361,7 +366,7 @@ def _parse_flow_item(raw_text: str, context: ContextTypes.DEFAULT_TYPE) -> tuple
         return None, "Data inválida. Use dd/mm, dd/mm/aa ou dd/mm/aaaa."
 
     item = {
-        "nome": nome.lower().strip(),
+        "nome": normalize_product_name(nome),
         "quantidade": quantidade,
         "unidade": unidade,
         "fecha": fecha_raw,
@@ -803,7 +808,7 @@ def _validate_duplicate_movements(modo: str, items: list[dict]) -> str | None:
                 LIMIT 1;
                 """,
                 (
-                    item["nome"],
+                    normalize_product_name(item["nome"]),
                     tipo,
                     fecha_producto,
                     item["unidade"],
@@ -937,7 +942,7 @@ async def _send_search_for_context(update: Update, context: ContextTypes.DEFAULT
     _init_user_state(context)
     grupo = context.user_data.get("grupo")
     contenedor = context.user_data.get("contenedor")
-    query_norm = (query or "").strip().lower()
+    query_norm = normalize_product_name(query)
 
     if not query_norm:
         await update.message.reply_text("Digite o nome do produto para buscar.", reply_markup=reply_flow_markup)
@@ -959,7 +964,7 @@ async def _send_search_for_context(update: Update, context: ContextTypes.DEFAULT
     rows = [
         row
         for row in rows
-        if query_norm in (row[0] or "").lower()
+        if query_norm in normalize_product_name(row[0])
     ]
 
     if not rows:

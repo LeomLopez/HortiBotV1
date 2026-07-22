@@ -2,11 +2,10 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from views.menu import get_menu_text as v_menu
 from models.db import obtener_productos, insertar_producto, obtener_stock_actual, obtener_ultima_actualizacion, search_productos, obtener_lote_stock_actual, obtener_stock_vencido, registrar_transferencia
-from models.validation import is_valid_unidade, normalize_unidade
+from models.validation import is_valid_unidade, normalize_product_name, normalize_unidade
 from datetime import datetime, date
 from textwrap import shorten
 from views.formatters import mensaje_por_nombre_from_tuples, _only_date, _fmt_fecha, mensaje_por_fecha_from_tuples, mensaje_order_from_tuples
-import unicodedata
 
 
 # Diccionario para traducir abreviaturas a nombre largo + emoji
@@ -54,10 +53,7 @@ def _estoque_help_short():
 
 
 def _norm(s: str) -> str:
-    # lower + sin acentos
-    s = (s or "").lower().strip()
-    s = unicodedata.normalize("NFD", s)
-    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return normalize_product_name(s)
 
 def parse_fecha_flexible(fecha_str: str) -> date | None:
     """
@@ -134,7 +130,7 @@ def parse_args(update: Update, requiere_fecha=False):
             except ValueError:
                 return None, None, None, None, None
 
-            nombre = partes[1].strip().lower()
+            nombre = normalize_product_name(partes[1])
 
             # ✅ usar tu parser flexible (dd/mm | dd/mm/yy | dd/mm/yyyy)
             fecha_producto = parse_fecha_flexible(partes[2])
@@ -181,7 +177,7 @@ def parse_mover_args(update: Update):
         except ValueError:
             return None
 
-        nombre = partes[1].lower()
+        nombre = normalize_product_name(partes[1])
         fecha_producto = parse_fecha_flexible(partes[2])
         grupo_origen = partes[3].upper()
         grupo_destino = None
@@ -234,7 +230,7 @@ def parse_mover_args(update: Update):
 def calcular_estoque(nome, grupo, produtos):
     estoque = 0
     for _, n, q, t, d, u, g, _ in produtos:
-        if n.lower() == nome.lower() and g == grupo:
+        if _norm(n) == _norm(nome) and g == grupo:
             if t in ['entrada', 'volta']:
                 estoque += q
             elif t in ['saida', 'descarte', 'devolucao']:
