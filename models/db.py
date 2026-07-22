@@ -303,6 +303,108 @@ def registrar_transferencia(
         conn.close()
 
 
+def registrar_operacion_lote(modo, items):
+    """Registra todos los items de un flujo guiado en una sola transacción."""
+    conn = get_db_connection()
+    if conn is None:
+        raise RuntimeError("Não foi possível conectar ao banco de dados.")
+
+    cursor = conn.cursor()
+    try:
+        for index, raw_item in enumerate(items, start=1):
+            item = dict(raw_item)
+            nombre = normalize_product_name(item.get("nome"))
+            unidade = normalize_unidade(item.get("unidade"))
+            grupo = (item.get("grupo") or "").upper().strip()
+            contenedor = (
+                str(item.get("contenedor") or "").upper().strip()
+                if grupo == "CON"
+                else "N/A"
+            )
+            cantidad = int(item.get("quantidade") or 0)
+
+            if not nombre or cantidad <= 0 or not is_valid_unidade(unidade):
+                raise ValueError(f"Item {index} inválido para gravação.")
+
+            if modo == "mover":
+                destino_grupo = (item.get("destino_grupo") or "").upper().strip()
+                destino_contenedor = (
+                    str(item.get("destino_contenedor") or "").upper().strip()
+                    if destino_grupo == "CON"
+                    else "N/A"
+                )
+                stamp = datetime.now().strftime("%H%M%S%f")
+                cursor.execute(
+                    """
+                    INSERT INTO movimientos
+                        (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor, concepto)
+                    VALUES
+                        (%s, %s, 'transferencia_saida', %s, %s, %s, %s, %s),
+                        (%s, %s, 'transferencia_entrada', %s, %s, %s, %s, %s);
+                    """,
+                    (
+                        nombre, cantidad, item["fecha_producto"], unidade, grupo,
+                        contenedor, f"p:{destino_grupo}:{stamp}",
+                        nombre, cantidad, item["fecha_producto"], unidade, destino_grupo,
+                        destino_contenedor, f"d:{grupo}:{stamp}",
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE stock_actual
+                    SET cantidad = cantidad - %s
+                    WHERE nombre = %s AND unidade = %s AND grupo = %s
+                      AND fecha_producto = %s AND contenedor = %s
+                      AND cantidad >= %s;
+                    """,
+                    (cantidad, nombre, unidade, grupo, item["fecha_producto"], contenedor, cantidad),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError(f"Item {index}: lote de origem inexistente ou sem estoque suficiente.")
+                cursor.execute(
+                    """
+                    INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (nombre, unidade, grupo, fecha_producto, contenedor)
+                    DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad;
+                    """,
+                    (nombre, unidade, destino_grupo, item["fecha_producto"], destino_contenedor, cantidad),
+                )
+                continue
+
+            tipo = item["tipo"]
+            concepto = item.get("concepto")
+            if concepto is not None:
+                concepto = normalize_product_name(concepto) or None
+            signo = 1 if tipo in {"entrada", "volta", "transferencia_entrada"} else -1
+            cursor.execute(
+                """
+                INSERT INTO movimientos
+                    (nombre, cantidad, tipo, fecha_producto, unidade, grupo, contenedor, concepto)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                (nombre, cantidad, tipo, item["fecha_producto"], unidade, grupo, contenedor, concepto),
+            )
+            cursor.execute(
+                """
+                INSERT INTO stock_actual (nombre, unidade, grupo, fecha_producto, contenedor, cantidad)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (nombre, unidade, grupo, fecha_producto, contenedor)
+                DO UPDATE SET cantidad = stock_actual.cantidad + EXCLUDED.cantidad * %s;
+                """,
+                (nombre, unidade, grupo, item["fecha_producto"], contenedor, cantidad, signo),
+            )
+
+        cursor.execute("DELETE FROM stock_actual WHERE cantidad <= 0;")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor=None, unidade=None):
     """
     Devuelve el lote actual en stock_actual para:

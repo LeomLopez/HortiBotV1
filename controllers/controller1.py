@@ -24,7 +24,7 @@ GRUPOS_VALIDOS = set(GRUPOS_MAP.keys())
 
 AREAS_VALIDAS = {"alm": "Almoço", "jan": "Janta", "cof": "Coffee", "kit": "Kit Lanche"}
 BAG_TO_KG = 2
-CONGELADOS_INPUT_UNITS = {"kg", "bag"}
+CONGELADOS_INPUT_UNITS = {"kg", "bag", "unid"}
 
 
 # Teclado personalizado
@@ -414,7 +414,7 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         insertar_producto(nombre, cantidad, 'entrada', fecha_producto, unidad, grupo, contenedor, concepto="fornecedor")
 
         # Buscar lote atualizado em stock_actual
-        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
         if lote:
             _, q_restante, un_restante, _, _, cont = lote
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
@@ -513,7 +513,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # 🔹 Consultar el lote actual en stock_actual (antes de la salida)
-    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
     estoque_lote = int(lote[1]) if lote and lote[1] is not None else 0
     unidade_lote = (lote[2] or "").lower() if lote else ""
 
@@ -543,7 +543,7 @@ async def saida(update: Update, context: ContextTypes.DEFAULT_TYPE):
         insertar_producto(nombre, cantidad, 'saida', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
 
         # 2️⃣ Volver a consultar el lote después de la salida
-        lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
         if lote_restante:
             _, q_restante, un_restante, _, _, cont = lote_restante
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
@@ -637,7 +637,7 @@ async def volta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         insertar_producto(nombre, cantidad, 'volta', fecha_producto, unidad, grupo, contenedor, concepto=concepto)
 
         # Consultar lote actualizado en stock_actual
-        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
         if lote:
             _, q_restante, un_restante, _, _, cont = lote
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
@@ -720,7 +720,7 @@ async def ajuste(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 4️⃣ Buscar lote exacto en stock_actual
-    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
 
     if not lote:
         await update.message.reply_text(
@@ -957,7 +957,7 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         contenedor = partes[4].strip().upper()
 
-    lote = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor)
+    lote = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor, unidade=unidade)
     if not lote:
         await update.message.reply_text(
             "❌ Nenhum lote encontrado para descarte.\n"
@@ -989,7 +989,7 @@ async def descarte(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     insertar_producto(nome, quantidade, 'descarte', data_produto, unidade, grupo, contenedor)
 
-    lote_restante = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor)
+    lote_restante = obtener_lote_stock_actual(nome, grupo, data_produto, contenedor, unidade=unidade)
     if lote_restante:
         _, q_restante, un_restante, _, _, cont = lote_restante
         extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
@@ -1073,7 +1073,7 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         contenedor = partes[4].strip().upper()
 
     # 🔹 Consultar el lote actual en stock_actual (antes de la devolução)
-    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+    lote = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
     estoque_lote = int(lote[1]) if lote and lote[1] is not None else 0
     unidade_lote = (lote[2] or "").lower() if lote else ""
 
@@ -1103,7 +1103,7 @@ async def devolucao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         insertar_producto(nombre, cantidad, 'devolucao', fecha_producto, unidad, grupo, contenedor)
 
         # 2️⃣ Consultar lote después
-        lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor)
+        lote_restante = obtener_lote_stock_actual(nombre, grupo, fecha_producto, contenedor, unidade=unidad)
         if lote_restante:
             _, q_restante, un_restante, _, _, cont = lote_restante
             extra = f" – ({cont})" if grupo == "CON" and cont and cont != "N/A" else ""
