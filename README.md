@@ -150,6 +150,8 @@ The manual is written for **non-technical operational users** (kitchen and inven
 Developed by **Leomar Lopez**  
 Profile focused on **Data Analysis and Software Engineering**, with interest in turning real logistical operational processes into actionable data.
 
+🔗 Repository: [github.com/LeomLopez/HortiBotV1](https://github.com/LeomLopez/HortiBotV1)
+
 ---
 
 ## 📌 Final Note

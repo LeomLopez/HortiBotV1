@@ -148,6 +148,8 @@ O manual foi escrito para usuários operacionais (estoque e cozinha), com exempl
 Projeto desenvolvido por **Leomar Lopez**  
 Perfil voltado à **Análise de Dados e Engenharia de Software**, com interesse em transformar operações logísticas reais em dados acionáveis para apoiar decisões baseadas em dados.
 
+🔗 Repositório: [github.com/LeomLopez/HortiBotV1](https://github.com/LeomLopez/HortiBotV1)
+
 ---
 
 ## 📌 Observação final
